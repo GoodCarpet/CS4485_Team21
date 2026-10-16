@@ -1,7 +1,6 @@
 package com.oetd.sentencebuilder;
 import java.sql.*;
 
-
 // Aniq Sunesara
 // Class made to handle all Database related operations
 public class DataBaseConnection
@@ -14,7 +13,7 @@ public class DataBaseConnection
     // constructor that sets up the connection to the SQL server
     public DataBaseConnection() throws SQLException {
         url = "jdbc:mysql://mysql-3316a945-sentence-builder-db.k.aivencloud.com:27131/sentence_builder?sslmode=require";
-        user = "avnadmin";
+        user = "sbdbuser";
         // be sure to add the DB password as an environment variable with the title "SB_DB_PASSWORD"
         password = System.getenv("SB_DB_PASSWORD");
         if(password == null){
@@ -44,5 +43,13 @@ public class DataBaseConnection
             throw new RuntimeException(e);
         }
     }
-}
 
+    // 테스트를 위해 방금 추가한 main 메서드
+    public static void main(String[] args) {
+        try {
+            DataBaseConnection testDb = new DataBaseConnection();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
