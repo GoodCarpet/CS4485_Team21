@@ -1,0 +1,14 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: sb-db-password
+      MYSQL_DATABASE: sb-db
+      MYSQL_USER: sb-db-user
+      MYSQL_PASSWORD: sb-db-password
+    # volumes:
+      # - ./sql/sentence_builder_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
