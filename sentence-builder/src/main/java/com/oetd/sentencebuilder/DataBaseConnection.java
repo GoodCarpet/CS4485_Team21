@@ -12,8 +12,9 @@ public class DataBaseConnection
 
     // constructor that sets up the connection to the SQL server
     public DataBaseConnection() throws SQLException {
-        url = "jdbc:mysql://mysql-3316a945-sentence-builder-db.k.aivencloud.com:27131/sentence_builder?sslmode=require";
-        user = "sbdbuser";
+        url = System.getenv("SB_DB_URL");
+        user = System.getenv("SB_DB_USER");
+
         // be sure to add the DB password as an environment variable with the title "SB_DB_PASSWORD"
         password = System.getenv("SB_DB_PASSWORD");
         if(password == null){

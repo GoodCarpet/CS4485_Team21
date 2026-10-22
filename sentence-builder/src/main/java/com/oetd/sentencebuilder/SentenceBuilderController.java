@@ -3,7 +3,7 @@ package com.oetd.sentencebuilder;
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 
-public class HelloController {
+public class SentenceBuilderController {
     @FXML
     private Label welcomeText;
 
