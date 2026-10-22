@@ -5,7 +5,10 @@ import org.hibernate.SessionFactory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class SBService {
     private final SessionFactory sessionFactory;
@@ -15,17 +18,32 @@ public class SBService {
     }
 
     public void addFile(File file) throws IOException  {
+
         String content = Files.readString(file.toPath());
         String[] toks = content.split("\\s+");
 
-        for(String tok : toks) {
+        sessionFactory.inTransaction(sess -> {
+            List<Token> tokens = sess
+                    .createQuery("FROM Token t WHERE t.token_text IN :texts", Token.class)
+                    .setParameterList("texts", toks)
+                    .getResultList();
 
-           Token token = new Token(tok, (long) 0, (long) 0, (long) 0);
+            Map<String, Token> tokTextCount = tokens
+                    .stream()
+                    .collect(Collectors.toMap(Token::getToken_text, t -> t));
 
-           sessionFactory.inTransaction(sess -> {
-               sess.persist(token);
-           });
-        }
+            for(String tok : toks){
+                Token curToken = tokTextCount.get(tok);
+                if(curToken != null){
+                    curToken.setTotal_count(curToken.getTotal_count() + 1);
+                } else {
+                    Token newToken = new Token(tok, 1L, 0L, 0L);
+                    sess.persist(newToken);
+                    tokTextCount.put(tok, newToken);
+                }
+            }
+
+        });
 
         return;
     }
