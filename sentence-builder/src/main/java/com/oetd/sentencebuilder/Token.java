@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "token")
 public class Token {
+
     @Id
     @GeneratedValue
     private Long token_id;
@@ -24,6 +25,54 @@ public class Token {
     private Long end_count;
 
     private LocalDateTime created_at;
+
+    public Long getToken_id() {
+        return token_id;
+    }
+
+    public String getToken_text() {
+        return token_text;
+    }
+
+    public Long getTotal_count() {
+        return total_count;
+    }
+
+    public Long getStart_count() {
+        return start_count;
+    }
+
+    public Long getEnd_count() {
+        return end_count;
+    }
+
+    public LocalDateTime getCreated_at() {
+        return created_at;
+    }
+
+    public void setToken_id(Long token_id) {
+        this.token_id = token_id;
+    }
+
+    public void setToken_text(String token_text) {
+        this.token_text = token_text;
+    }
+
+    public void setTotal_count(Long total_count) {
+        this.total_count = total_count;
+    }
+
+    public void setStart_count(Long start_count) {
+        this.start_count = start_count;
+    }
+
+    public void setEnd_count(Long end_count) {
+        this.end_count = end_count;
+    }
+
+    public void setCreated_at(LocalDateTime created_at) {
+        this.created_at = created_at;
+    }
 
     public Token(String text, Long tcount, Long scount, Long ecount){
         token_text = text;
