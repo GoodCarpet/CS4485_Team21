@@ -1,5 +1,6 @@
 package com.oetd.sentencebuilder;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import org.hibernate.SessionFactory;
 
@@ -97,5 +98,29 @@ public class SBService {
         return sessionFactory.fromTransaction(sess -> {
             return sess.createQuery("FROM Token", Token.class).getResultList();
         });
+    }
+
+    public Token getTokenByText(String token_text){
+        return sessionFactory.fromTransaction(sess -> {
+            return sess.createQuery("FROM Token t where t.token_text = :text", Token.class).setParameter("text", token_text).setMaxResults(1).getResultStream().findFirst().orElse(null);
+        });
+    }
+
+    public NextToken getNextToken(Token prevToken) {
+        return sessionFactory.fromTransaction(sess -> {
+            CriteriaBuilder cb = sess.getCriteriaBuilder();
+            var query = cb.createQuery(NextToken.class);
+            var root = query.from(NextToken.class);
+
+            query.select(root).where(cb.equal(root.get("token_text"), prevToken.getToken_text())).orderBy(cb.desc(root.get("count")));
+
+            return sess.createQuery(query)
+                    .setMaxResults(1)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+
+        });
+
     }
 }

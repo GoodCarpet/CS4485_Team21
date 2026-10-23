@@ -25,6 +25,8 @@ public class NextToken {
         this.count = count;
     }
 
+    protected NextToken() {}
+
     public Long getNext_token_id() {
         return next_token_id;
     }
