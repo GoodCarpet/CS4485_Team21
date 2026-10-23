@@ -1,6 +1,10 @@
 package com.oetd.sentencebuilder;
 import java.sql.*;
 
+// THIS CODE IS OUTDATED!!!!!!!!!!!!!!!
+// USE ORM!!!!!!!!!
+
+
 // Aniq Sunesara
 // Class made to handle all Database related operations
 public class DataBaseConnection
