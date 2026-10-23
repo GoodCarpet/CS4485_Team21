@@ -38,7 +38,9 @@ public class SentenceBuilder extends Application {
 
         try {
             sessionFactory =  new MetadataSources(registry)
+                    //Add tables to be persisted
                     .addAnnotatedClass(Token.class)
+                    .addAnnotatedClass(NextToken.class)
                     .buildMetadata()
                     .buildSessionFactory();
         } catch (Exception e) {
