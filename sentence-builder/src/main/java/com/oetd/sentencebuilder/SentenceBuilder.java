@@ -4,11 +4,9 @@ package com.oetd.sentencebuilder;
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.fxml.FXMLLoader;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
-import org.hibernate.Session;
 
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -16,15 +14,12 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.hibernate.SessionFactory;
-import org.hibernate.boot.Metadata;
-import org.hibernate.boot.MetadataBuilder;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 
 import java.io.File;
 import java.io.IOException;
-import java.sql.*;
 import java.time.LocalDateTime;
 
 public class SentenceBuilder extends Application {
@@ -32,7 +27,21 @@ public class SentenceBuilder extends Application {
     @Override
     public void start(Stage stage) throws IOException {
 
-        final StandardServiceRegistry registry = new StandardServiceRegistryBuilder().build();
+        // get DB connection variable via environment variables
+        String dbUrl = System.getenv("SB_DB_URL");
+        String dbUser = System.getenv("SB_DB_USER");
+        String dbPassword = System.getenv("SB_DB_PASSWORD");
+
+        if (dbUrl == null || dbUser == null || dbPassword == null) {
+            throw new IOException("Missing database environment variables");
+        }
+
+        final StandardServiceRegistry registry =
+                new StandardServiceRegistryBuilder()
+                        .applySetting("hibernate.connection.url", dbUrl)
+                        .applySetting("hibernate.connection.username", dbUser)
+                        .applySetting("hibernate.connection.password", dbPassword)
+                        .build();
 
         SessionFactory sessionFactory = null;
 
@@ -40,7 +49,7 @@ public class SentenceBuilder extends Application {
             sessionFactory =  new MetadataSources(registry)
                     //Add tables to be persisted
                     .addAnnotatedClass(Token.class)
-                    .addAnnotatedClass(NextToken.class)
+                    .addAnnotatedClass(TokenTransition.class)
                     .buildMetadata()
                     .buildSessionFactory();
         } catch (Exception e) {
