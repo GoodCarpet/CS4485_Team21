@@ -1,6 +1,5 @@
 package com.oetd.sentencebuilder;
 
-
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -107,9 +106,37 @@ public class SentenceBuilder extends Application {
             tokens.setAll(service.getTokens());
         });
 
+        TextField textField = new TextField("Change me!");
+
+        List<Token> generated = new ArrayList<>();
+
+        Button generateButton = new Button("Generate");
+
+        generateButton.setOnAction(e -> {
+
+            if(generated.isEmpty()){
+                Token mostFreq = tokens.stream().sorted((a, b) -> b.getTotal_count().compareTo(a.getTotal_count())).findFirst().orElse(null);
+                generated.add(mostFreq);
+            } else {
+                Token lastToken = generated.getLast();
+                NextToken nextToken = service.getNextToken(lastToken);
+                Token nt = service.getTokenByText(nextToken.getNext_token_text());
+                generated.add(nt);
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            for(Token tok : generated){
+                sb.append(tok.getToken_text());
+                sb.append(' ');
+            }
+
+            textField.setText(sb.toString());
+        });
+
 
         // Setup layouts and scene
-        VBox vBox = new VBox(importButton, refreshButton, table);
+        VBox vBox = new VBox(importButton, refreshButton, generateButton, textField, table);
         Scene scene = new Scene(vBox, 400, 200);
 
         stage.setScene(scene);
