@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.sql.*;
 import java.util.*;
 
+// Minchan Kwon
 // Class to handle Markov Chain text generation integrated with Aiven MySQL DB
 public class MarkovGenerator {
     private DataBaseConnection db;
@@ -30,15 +31,8 @@ public class MarkovGenerator {
         startWordsMap.clear();
         tokenIdMap.clear();
 
-        // Load tokens and starting word weights
+        // Load tokens from 'Token' / 'token' table
         String tokenQuery = "SELECT token_id, token_text, start_count, end_count FROM Token";
-        // Join Token_Transition with Token twice to get the actual strings for previous and next words
-        String transitionQuery =
-                "SELECT t1.token_text AS prev_word, t2.token_text AS next_word, " +
-                        "       tt.occurrence_count, tt.user_selection_count " +
-                        "FROM Token_Transition tt " +
-                        "JOIN Token t1 ON tt.previous_token_id = t1.token_id " +
-                        "JOIN Token t2 ON tt.next_token_id = t2.token_id";
 
         try {
             ResultSet tokenRs = db.askQuery(tokenQuery);
@@ -49,28 +43,52 @@ public class MarkovGenerator {
                 int startCount = tokenRs.getInt("start_count");
 
                 tokenIdMap.put(text, id);
-                System.out.println("Found token in DB: " + text + " (id: " + id + ")");
                 if (startCount > 0) {
                     startWordsMap.put(text, startCount);
                 }
                 totalTokens++;
             }
 
-            ResultSet transRs = db.askQuery(transitionQuery);
             int totalTransitions = 0;
-            while (transRs.next()) {
-                String prevWord = transRs.getString("prev_word");
-                String nextWord = transRs.getString("next_word");
-                int occCount = transRs.getInt("occurrence_count");
-                int userCount = transRs.getInt("user_selection_count");
 
-                // Total weight combines natural occurrence and user selection
-                int weight = occCount + userCount;
-                if (weight > 0) {
-                    addTransition(prevWord, nextWord, weight);
-                    totalTransitions++;
+            // [A] Load from 'next_token' table (used when files are imported via SBService)
+            try {
+                ResultSet nextTokenRs = db.askQuery("SELECT token_text, next_token_text, count FROM next_token");
+                while (nextTokenRs.next()) {
+                    String prevWord = nextTokenRs.getString("token_text");
+                    String nextWord = nextTokenRs.getString("next_token_text");
+                    int count = nextTokenRs.getInt("count");
+                    if (count > 0) {
+                        addTransition(prevWord, nextWord, count);
+                        totalTransitions++;
+                    }
                 }
+            } catch (Exception ignored) {
+                // Ignore if next_token table doesn't have data yet
             }
+
+            // [B] Load from 'Token_Transition' table (relational ID-based schema)
+            String transitionQuery =
+                    "SELECT t1.token_text AS prev_word, t2.token_text AS next_word, " +
+                            "       tt.occurrence_count, tt.user_selection_count " +
+                            "FROM Token_Transition tt " +
+                            "JOIN Token t1 ON tt.previous_token_id = t1.token_id " +
+                            "JOIN Token t2 ON tt.next_token_id = t2.token_id";
+            try {
+                ResultSet transRs = db.askQuery(transitionQuery);
+                while (transRs.next()) {
+                    String prevWord = transRs.getString("prev_word");
+                    String nextWord = transRs.getString("next_word");
+                    int occCount = transRs.getInt("occurrence_count");
+                    int userCount = transRs.getInt("user_selection_count");
+
+                    int weight = occCount + userCount;
+                    if (weight > 0) {
+                        addTransition(prevWord, nextWord, weight);
+                        totalTransitions++;
+                    }
+                }
+            } catch (Exception ignored) {}
 
             System.out.println("Loaded " + totalTokens + " tokens and " + totalTransitions + " transitions from DB.");
 
@@ -91,7 +109,6 @@ public class MarkovGenerator {
         if (!startWordsMap.isEmpty()) {
             return pickWeightedRandom(startWordsMap);
         }
-        // Fallback: pick any available word in transitionMap if no start_count > 0 exists
         if (!transitionMap.isEmpty()) {
             List<String> keys = new ArrayList<>(transitionMap.keySet());
             return keys.get(random.nextInt(keys.size()));
@@ -182,7 +199,6 @@ public class MarkovGenerator {
         }
     }
 
-    // Helper for generating SHA-256 hash for sentence_hash column
     private String sha256(String base) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -209,7 +225,7 @@ public class MarkovGenerator {
 
             // Check if DB already has data; if empty, run with fallback sample data
             if (generator.transitionMap.isEmpty()) {
-                System.out.println("DB is currently empty! Testing with fallback sample data instead...");
+                System.out.println("DB transition tables are currently empty! Testing with fallback sample data instead...");
                 generator.addTransition("The", "quick", 5);
                 generator.addTransition("The", "lazy", 3);
                 generator.addTransition("quick", "brown", 5);
