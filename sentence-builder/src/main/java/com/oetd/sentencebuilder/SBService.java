@@ -1,101 +1,97 @@
 package com.oetd.sentencebuilder;
 
-import jakarta.persistence.criteria.Predicate;
 import org.hibernate.SessionFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class SBService {
     private final SessionFactory sessionFactory;
 
-
-    public SBService(SessionFactory sf){
-        sessionFactory = sf;
+    public SBService(SessionFactory sf) {
+        this.sessionFactory = sf;
     }
 
-    public void addFile(File file) throws IOException  {
-
+    // function that takes a file and parses through it and updates DB accordingly
+    public void addFile(File file) throws IOException {
         String content = Files.readString(file.toPath());
+        String trimmed = content.trim();
+        if (trimmed.isEmpty()) return;
 
-        // tokenize document
-        String[] tokenKeys = content.split("\\s+");
-
-        // if we have document ["hello", "world", "how", "are", "you"], we want all next_token relationships
-        // [(hello, world), (world, how), (how, are), (are, you)]
-        List<NextToken.Key> nextTokenKeys = IntStream.range(0, tokenKeys.length - 1)
-                .mapToObj(i -> new NextToken.Key(tokenKeys[i], tokenKeys[i + 1]))
+        // Preserve the original app's whitespace-based tokenization.
+        // lowercase words for normalization purposes
+        List<String> words = Arrays.stream(trimmed.split("\\s+"))
+                .map(word -> word.toLowerCase(Locale.ROOT))
                 .toList();
+        if (words.stream().anyMatch(word -> word.length() > 255)) {
+            throw new IOException("A token exceeds the database's 255-character limit");
+        }
 
-        sessionFactory.inTransaction(sess -> {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String word : words) counts.merge(word, 1L, Long::sum);
 
-            List<Token> tokens = sess
-                    .createQuery("FROM Token t WHERE t.token_text IN :texts", Token.class)
-                    .setParameterList("texts", tokenKeys)
+        sessionFactory.inTransaction(session -> {
+            // Read only words present in this file.
+            List<Token> existing = session.createQuery(
+                            "from Token t where t.token_text in :words", Token.class)
+                    .setParameterList("words", counts.keySet())
                     .getResultList();
+            Map<String, Token> byText = existing.stream().collect(
+                    Collectors.toMap(token -> token.getToken_text().toLowerCase(Locale.ROOT), token -> token));
 
-            // instantiate new criteria builder
-            var critBuilder = sess.getCriteriaBuilder();
-            var nextTokenQuery = critBuilder.createQuery(NextToken.class);
-            // set the NextToken table as the query root
-            var root = nextTokenQuery.from(NextToken.class);
+            for (Map.Entry<String, Long> entry : counts.entrySet()) {
+                String word = entry.getKey();
+                long increment = entry.getValue();
+                long starts = word.equals(words.getFirst()) ? 1 : 0;
+                long ends = word.equals(words.getLast()) ? 1 : 0;
 
-            // we want all of the next tokens who have corresponding keys with the ones we found in the document
-            var predicates = nextTokenKeys.stream().map(key -> critBuilder.and(
-                    critBuilder.equal(root.get("token_text"), key.token_text()),
-                    critBuilder.equal(root.get("next_token_text"), key.next_token_text())
-            )).toArray(Predicate[]::new);
-
-            // select all next tokens from table corresponding to next tokens found in document
-            nextTokenQuery.select(root).where(critBuilder.or(predicates));
-            List<NextToken> nextTokens = sess.createQuery(nextTokenQuery).getResultList();
-
-            Map<String, Token> tokenMap = tokens
-                    .stream()
-                    .collect(Collectors.toMap(Token::getToken_text, t -> t));
-
-            Map<NextToken.Key, NextToken> nextTokenMap = nextTokens
-                    .stream()
-                    .collect(Collectors.toMap(nTok -> new NextToken.Key(nTok.getToken_text(), nTok.getNext_token_text()), nTok -> nTok));
-
-            // for all tokens in document, increment the count existing corresponding db token
-            // or create a new token with count 1
-            for(String tok : tokenKeys){
-                Token curToken = tokenMap.get(tok);
-                if(curToken != null){
-                    curToken.setTotal_count(curToken.getTotal_count() + 1);
+                Token token = byText.get(word);
+                if (token == null) {
+                    token = new Token(word, increment, starts, ends);
+                    session.persist(token);
+                    byText.put(word, token);
                 } else {
-                    Token newToken = new Token(tok, 1L, 0L, 0L);
-                    sess.persist(newToken);
-                    tokenMap.put(tok, newToken);
+                    token.setTotal_count(token.getTotal_count() + increment);
+                    token.setStart_count(token.getStart_count() + starts);
+                    token.setEnd_count(token.getEnd_count() + ends);
                 }
             }
 
-            // same thing here but for next tokens
-            for(NextToken.Key nextTokenKey : nextTokenKeys){
-                NextToken curNextToken = nextTokenMap.get(nextTokenKey);
-                if(curNextToken != null){
-                    curNextToken.setCount(curNextToken.getCount() + 1);
-                } else {
-                    NextToken newNextToken = new NextToken(nextTokenKey.token_text(), nextTokenKey.next_token_text(), 1L);
-                    sess.persist(newNextToken);
-                    nextTokenMap.put(nextTokenKey, newNextToken);
-                }
+            // IDENTITY-generated token IDs become available after insertion.
+            session.flush();
+
+            Map<TokenTransition.Key, Long> transitions = new HashMap<>();
+            for (int i = 0; i < words.size() - 1; i++) {
+                Long previousId = byText.get(words.get(i)).getToken_id();
+                Long nextId = byText.get(words.get(i + 1)).getToken_id();
+                transitions.merge(new TokenTransition.Key(previousId, nextId), 1L, Long::sum);
             }
 
+            // Each key is the composite primary key defined by Token_Transition.
+            for (Map.Entry<TokenTransition.Key, Long> entry : transitions.entrySet()) {
+                TokenTransition.Key key = entry.getKey();
+                TokenTransition transition = session.find(TokenTransition.class, key);
+                if (transition == null) {
+                    session.persist(new TokenTransition(
+                            key.getPreviousTokenId(), key.getNextTokenId(), entry.getValue()));
+                } else {
+                    transition.setOccurrenceCount(
+                            transition.getOccurrenceCount() + entry.getValue());
+                }
+            }
         });
-
-        return;
     }
 
     public List<Token> getTokens() {
-        return sessionFactory.fromTransaction(sess -> {
-            return sess.createQuery("FROM Token", Token.class).getResultList();
-        });
+        return sessionFactory.fromTransaction(session ->
+                session.createQuery("from Token", Token.class).getResultList());
     }
 }
