@@ -1,99 +1,81 @@
 package com.oetd.sentencebuilder;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.sql.*;
+import org.hibernate.SessionFactory;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+
 import java.util.*;
 
 // Minchan Kwon
-// Class to handle Markov Chain text generation integrated with Aiven MySQL DB
+// Class to handle Markov Chain text generation using Hibernate ORM (Token & TokenTransition)
 public class MarkovGenerator {
-    private DataBaseConnection db;
+    private final SessionFactory sessionFactory;
     // Key = Current Word, Value = Map of (Next Word -> Weight/Frequency)
-    private Map<String, Map<String, Integer>> transitionMap;
+    private final Map<String, Map<String, Integer>> transitionMap;
     // Key = Start Word, Value = start_count (for picking a random starting word)
-    private Map<String, Integer> startWordsMap;
-    // Map to keep track of token_text -> token_id for saving generated sentences
-    private Map<String, Long> tokenIdMap;
-    private Random random;
+    private final Map<String, Integer> startWordsMap;
+    private final Random random;
 
-    public MarkovGenerator() throws SQLException {
-        this.db = new DataBaseConnection();
+    // Constructor accepting the shared Hibernate SessionFactory
+    public MarkovGenerator(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
         this.transitionMap = new HashMap<>();
         this.startWordsMap = new HashMap<>();
-        this.tokenIdMap = new HashMap<>();
         this.random = new Random();
     }
 
-    // 1. Load actual token and transition data from the database
+    // 1. Load token and transition data from DB using Hibernate ORM
     public void loadTransitionsFromDB() {
         transitionMap.clear();
         startWordsMap.clear();
-        tokenIdMap.clear();
 
-        // Load tokens from 'Token' / 'token' table
-        String tokenQuery = "SELECT token_id, token_text, start_count, end_count FROM Token";
+        if (sessionFactory == null) {
+            System.out.println("SessionFactory is null. Skipping ORM query.");
+            return;
+        }
 
         try {
-            ResultSet tokenRs = db.askQuery(tokenQuery);
-            int totalTokens = 0;
-            while (tokenRs.next()) {
-                long id = tokenRs.getLong("token_id");
-                String text = tokenRs.getString("token_text");
-                int startCount = tokenRs.getInt("start_count");
+            sessionFactory.inTransaction(session -> {
+                // 1) Load all tokens and map token_id -> token_text
+                List<Token> tokens = session.createQuery("from Token", Token.class).getResultList();
+                Map<Long, String> idToWordMap = new HashMap<>();
 
-                tokenIdMap.put(text, id);
-                if (startCount > 0) {
-                    startWordsMap.put(text, startCount);
-                }
-                totalTokens++;
-            }
-
-            int totalTransitions = 0;
-
-            // [A] Load from 'next_token' table (used when files are imported via SBService)
-            try {
-                ResultSet nextTokenRs = db.askQuery("SELECT token_text, next_token_text, count FROM next_token");
-                while (nextTokenRs.next()) {
-                    String prevWord = nextTokenRs.getString("token_text");
-                    String nextWord = nextTokenRs.getString("next_token_text");
-                    int count = nextTokenRs.getInt("count");
-                    if (count > 0) {
-                        addTransition(prevWord, nextWord, count);
-                        totalTransitions++;
+                for (Token t : tokens) {
+                    idToWordMap.put(t.getToken_id(), t.getToken_text());
+                    if (t.getStart_count() != null && t.getStart_count() > 0) {
+                        startWordsMap.put(t.getToken_text(), t.getStart_count().intValue());
                     }
                 }
-            } catch (Exception ignored) {
-                // Ignore if next_token table doesn't have data yet
-            }
 
-            // [B] Load from 'Token_Transition' table (relational ID-based schema)
-            String transitionQuery =
-                    "SELECT t1.token_text AS prev_word, t2.token_text AS next_word, " +
-                            "       tt.occurrence_count, tt.user_selection_count " +
-                            "FROM Token_Transition tt " +
-                            "JOIN Token t1 ON tt.previous_token_id = t1.token_id " +
-                            "JOIN Token t2 ON tt.next_token_id = t2.token_id";
-            try {
-                ResultSet transRs = db.askQuery(transitionQuery);
-                while (transRs.next()) {
-                    String prevWord = transRs.getString("prev_word");
-                    String nextWord = transRs.getString("next_word");
-                    int occCount = transRs.getInt("occurrence_count");
-                    int userCount = transRs.getInt("user_selection_count");
+                // 2) Load transitions from TokenTransition entity
+                List<TokenTransition> transitions = session.createQuery("from TokenTransition", TokenTransition.class).getResultList();
+                int loadedTransitions = 0;
 
-                    int weight = occCount + userCount;
-                    if (weight > 0) {
-                        addTransition(prevWord, nextWord, weight);
-                        totalTransitions++;
+                for (TokenTransition tt : transitions) {
+                    Long prevId = null;
+                    Long nextId = null;
+
+                    // Extract IDs via composite key
+                    if (tt.getId() != null) {
+                        prevId = tt.getId().getPreviousTokenId();
+                        nextId = tt.getId().getNextTokenId();
+                    }
+
+                    String prevWord = idToWordMap.get(prevId);
+                    String nextWord = idToWordMap.get(nextId);
+                    Long occCount = tt.getOccurrenceCount();
+
+                    if (prevWord != null && nextWord != null && occCount != null && occCount > 0) {
+                        addTransition(prevWord, nextWord, occCount.intValue());
+                        loadedTransitions++;
                     }
                 }
-            } catch (Exception ignored) {}
 
-            System.out.println("Loaded " + totalTokens + " tokens and " + totalTransitions + " transitions from DB.");
-
-        } catch (SQLException e) {
-            System.out.println("Error loading transitions from DB: " + e.getMessage());
+                System.out.println("Loaded " + tokens.size() + " tokens and " + loadedTransitions + " transitions via Hibernate ORM.");
+            });
+        } catch (Exception e) {
+            System.out.println("Error loading transitions via Hibernate: " + e.getMessage());
         }
     }
 
@@ -178,75 +160,50 @@ public class MarkovGenerator {
         return generateSentence(startWord, maxLength);
     }
 
-    // 7. Save the generated sentence back into the Generated_Sentence table
-    public void saveGeneratedSentenceToDB(String sentenceText, String startWord) {
-        Long startTokenId = tokenIdMap.get(startWord);
-        String hash = sha256(sentenceText);
-        String sql = "INSERT INTO Generated_Sentence (sentence_text, sentence_hash, generation_method, starting_token_id, added_to_corpus) " +
-                "VALUES (?, ?, 'Markov Chain', ?, 0)";
-        try (PreparedStatement pstmt = db.dbconn.prepareStatement(sql)) {
-            pstmt.setString(1, sentenceText);
-            pstmt.setString(2, hash);
-            if (startTokenId != null) {
-                pstmt.setLong(3, startTokenId);
-            } else {
-                pstmt.setNull(3, Types.BIGINT);
-            }
-            pstmt.executeUpdate();
-            System.out.println("Saved generated sentence to DB successfully.");
-        } catch (SQLException e) {
-            System.out.println("Error saving sentence to DB: " + e.getMessage());
-        }
-    }
-
-    private String sha256(String base) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(base.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
-            }
-            return hexString.toString();
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
-    }
-
-    // Main method for testing DB data loading and sentence generation
+    // Standalone test method using Hibernate SessionFactory with Environment Variables
     public static void main(String[] args) {
-        try {
-            MarkovGenerator generator = new MarkovGenerator();
+        String url = System.getenv("SB_DB_URL");
+        String user = System.getenv("SB_DB_USER");
+        String password = System.getenv("SB_DB_PASSWORD");
 
-            // Load actual transitions from Aiven DB
+        StandardServiceRegistryBuilder builder = new StandardServiceRegistryBuilder();
+        if (url != null) {
+            builder.applySetting("hibernate.connection.url", url);
+            builder.applySetting("jakarta.persistence.jdbc.url", url);
+        }
+        if (user != null) {
+            builder.applySetting("hibernate.connection.username", user);
+            builder.applySetting("jakarta.persistence.jdbc.user", user);
+        }
+        if (password != null) {
+            builder.applySetting("hibernate.connection.password", password);
+            builder.applySetting("jakarta.persistence.jdbc.password", password);
+        }
+
+        final StandardServiceRegistry registry = builder.build();
+        try (SessionFactory sessionFactory = new MetadataSources(registry)
+                .addAnnotatedClass(Token.class)
+                .addAnnotatedClass(TokenTransition.class)
+                .buildMetadata()
+                .buildSessionFactory()) {
+
+            MarkovGenerator generator = new MarkovGenerator(sessionFactory);
             generator.loadTransitionsFromDB();
 
-            // Check if DB already has data; if empty, run with fallback sample data
             if (generator.transitionMap.isEmpty()) {
-                System.out.println("DB transition tables are currently empty! Testing with fallback sample data instead...");
+                System.out.println("DB transition tables are currently empty! Testing with fallback sample data...");
                 generator.addTransition("The", "quick", 5);
-                generator.addTransition("The", "lazy", 3);
                 generator.addTransition("quick", "brown", 5);
-                generator.addTransition("lazy", "dog.", 3);
-                generator.addTransition("brown", "fox", 4);
-                generator.addTransition("fox", "jumps", 4);
-                generator.addTransition("jumps", "over", 4);
-                generator.addTransition("over", "the", 4);
-                generator.addTransition("the", "lazy", 4);
-
-                for (int i = 1; i <= 3; i++) {
-                    System.out.println("Sample Sentence " + i + ": " + generator.generateSentence("The", 15));
-                }
+                generator.addTransition("brown", "fox.", 4);
+                System.out.println("Sample Sentence: " + generator.generateSentence("The", 15));
             } else {
-                System.out.println("\n=== [Generating Sentences from Real DB Data] ===");
+                System.out.println("\n=== [Generating Sentences via Hibernate ORM] ===");
                 for (int i = 1; i <= 5; i++) {
-                    System.out.println("DB Sentence " + i + ": " + generator.generateSentence(20));
+                    System.out.println("Sentence " + i + ": " + generator.generateSentence(20));
                 }
             }
-
         } catch (Exception e) {
+            StandardServiceRegistryBuilder.destroy(registry);
             e.printStackTrace();
         }
     }
