@@ -123,9 +123,10 @@ public class SentenceBuilder extends Application {
                 generated.add(mostFreq);
             } else {
                 Token lastToken = generated.getLast();
-                NextToken nextToken = service.getNextToken(lastToken);
-                Token nt = service.getTokenByText(nextToken.getNext_token_text());
-                generated.add(nt);
+                Token nextToken = service.getNextToken(lastToken);
+                if (nextToken != null) {
+                    generated.add(nextToken);
+                }
             }
 
             StringBuilder sb = new StringBuilder();

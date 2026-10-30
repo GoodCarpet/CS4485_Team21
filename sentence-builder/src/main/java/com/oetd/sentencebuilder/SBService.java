@@ -103,21 +103,28 @@ public class SBService {
         });
     }
 
-    public NextToken getNextToken(Token prevToken) {
+    public Token getNextToken(Token prevToken) {
         return sessionFactory.fromTransaction(sess -> {
             CriteriaBuilder cb = sess.getCriteriaBuilder();
-            var query = cb.createQuery(NextToken.class);
-            var root = query.from(NextToken.class);
+            var query = cb.createQuery(TokenTransition.class);
+            var root = query.from(TokenTransition.class);
 
-            query.select(root).where(cb.equal(root.get("token_text"), prevToken.getToken_text())).orderBy(cb.desc(root.get("count")));
+            query.select(root)
+                 .where(cb.equal(root.get("id").get("previousTokenId"), prevToken.getToken_id()))
+                 .orderBy(cb.desc(root.get("occurrenceCount")));
 
-            return sess.createQuery(query)
+            TokenTransition transition = sess.createQuery(query)
                     .setMaxResults(1)
                     .getResultStream()
                     .findFirst()
                     .orElse(null);
 
-        });
+            if (transition == null) {
+                return null;
+            }
 
+            Long nextTokenId = transition.getId().getNextTokenId();
+            return sess.find(Token.class, nextTokenId);
+        });
     }
 }
