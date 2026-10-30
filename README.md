@@ -14,11 +14,11 @@ all DB info is shared in pinned messages in discord
   - use the path in the ssl CA section
 - try and connect, it should work
 
-### Connect via Java
-You must make an environment variable on your computer first
+### Connect via JDBC
+code in DataBaseConnection() Class should all work, but you must make an environment variable on your computer first
 - open system properties on your pc
 - click on environment variables
 - under user variable, click new
-- add new variables named: "SB_DB_PASSWORD", "SB_DB_URL", "SB_DB_USER"
-- variable values must be the ones from pinned Discord messages
+- variable name must be: "SB_DB_PASSWORD"
+- variable value must be the db server password
 - hit ok
