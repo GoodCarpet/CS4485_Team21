@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import javafx.beans.property.SimpleLongProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -32,7 +33,8 @@ public class Token {
     @Column(name = "end_count", nullable = false) // number of times word ends a sentence
     private Long end_count;
 
-    @Column(name = "created_at", nullable = false, insertable = false, updatable = false, columnDefinition = "TIMESTAMP")
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime created_at; // time of the first time added
 
     protected Token() {}

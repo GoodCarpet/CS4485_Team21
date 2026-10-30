@@ -1,5 +1,7 @@
 package com.oetd.sentencebuilder;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
 import org.hibernate.SessionFactory;
 
 import java.io.File;
@@ -214,5 +216,36 @@ public class SBService {
     public List<Token> getTokens() {
         return sessionFactory.fromTransaction(session ->
                 session.createQuery("from Token", Token.class).getResultList());
+    }
+
+    public Token getTokenByText(String token_text){
+        return sessionFactory.fromTransaction(sess -> {
+            return sess.createQuery("FROM Token t where t.token_text = :text", Token.class).setParameter("text", token_text).setMaxResults(1).getResultStream().findFirst().orElse(null);
+        });
+    }
+
+    public Token getNextToken(Token prevToken) {
+        return sessionFactory.fromTransaction(sess -> {
+            CriteriaBuilder cb = sess.getCriteriaBuilder();
+            var query = cb.createQuery(TokenTransition.class);
+            var root = query.from(TokenTransition.class);
+
+            query.select(root)
+                 .where(cb.equal(root.get("id").get("previousTokenId"), prevToken.getToken_id()))
+                 .orderBy(cb.desc(root.get("occurrenceCount")));
+
+            TokenTransition transition = sess.createQuery(query)
+                    .setMaxResults(1)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+
+            if (transition == null) {
+                return null;
+            }
+
+            Long nextTokenId = transition.getId().getNextTokenId();
+            return sess.find(Token.class, nextTokenId);
+        });
     }
 }

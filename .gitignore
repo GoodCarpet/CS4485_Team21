@@ -1,0 +1,29 @@
+sentence-builder/target/
+!sentence-builder/.mvn/wrapper/maven-wrapper.jar
+!sentence-builder/**/src/main/**/target/
+!sentence-builder/**/src/test/**/target/
+sentence-builder/.kotlin
+
+### IntelliJ IDEA ###
+sentence-builder/.idea/
+sentence-builder/*.iws
+sentence-builder/*.iml
+sentence-builder/*.ipr
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### env
+.env.local
+
+sentence-builder/pom.xml.tag
+sentence-builder/pom.xml.releaseBackup
+sentence-builder/pom.xml.versionsBackup
+sentence-builder/pom.xml.next
+sentence-builder/release.properties
+sentence-builder/dependency-reduced-pom.xml
+sentence-builder/buildNumber.properties
+sentence-builder/.mvn/timing.properties

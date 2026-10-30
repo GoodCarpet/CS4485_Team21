@@ -1,11 +1,11 @@
 package com.oetd.sentencebuilder;
 
-
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 
 import javafx.scene.Scene;
@@ -18,9 +18,12 @@ import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 
+import java.util.ArrayList;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SentenceBuilder extends Application {
 
@@ -46,11 +49,10 @@ public class SentenceBuilder extends Application {
         SessionFactory sessionFactory = null;
 
         try {
-            sessionFactory = new MetadataSources(registry)
+            sessionFactory =  new MetadataSources(registry)
+                    //Add tables to be persisted
                     .addAnnotatedClass(Token.class)
                     .addAnnotatedClass(TokenTransition.class)
-                    .addAnnotatedClass(ImportedFile.class)
-                    .addAnnotatedClass(GeneratedSentence.class)
                     .buildMetadata()
                     .buildSessionFactory();
         } catch (Exception e) {
@@ -108,9 +110,38 @@ public class SentenceBuilder extends Application {
             tokens.setAll(service.getTokens());
         });
 
+        TextField textField = new TextField("Change me!");
+
+        List<Token> generated = new ArrayList<>();
+
+        Button generateButton = new Button("Generate");
+
+        generateButton.setOnAction(e -> {
+
+            if(generated.isEmpty()){
+                Token mostFreq = tokens.stream().sorted((a, b) -> b.getTotal_count().compareTo(a.getTotal_count())).findFirst().orElse(null);
+                generated.add(mostFreq);
+            } else {
+                Token lastToken = generated.getLast();
+                Token nextToken = service.getNextToken(lastToken);
+                if (nextToken != null) {
+                    generated.add(nextToken);
+                }
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            for(Token tok : generated){
+                sb.append(tok.getToken_text());
+                sb.append(' ');
+            }
+
+            textField.setText(sb.toString());
+        });
+
 
         // Setup layouts and scene
-        VBox vBox = new VBox(importButton, refreshButton, table);
+        VBox vBox = new VBox(importButton, refreshButton, generateButton, textField, table);
         Scene scene = new Scene(vBox, 400, 200);
 
         stage.setScene(scene);

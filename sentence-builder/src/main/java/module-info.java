@@ -6,6 +6,7 @@ module com.oetd.sentencebuilder {
 
     requires org.hibernate.orm.core;
     requires jakarta.persistence;
+    requires java.desktop;
 
     opens com.oetd.sentencebuilder to javafx.fxml, org.hibernate.orm.core;
 
