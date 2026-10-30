@@ -46,10 +46,11 @@ public class SentenceBuilder extends Application {
         SessionFactory sessionFactory = null;
 
         try {
-            sessionFactory =  new MetadataSources(registry)
-                    //Add tables to be persisted
+            sessionFactory = new MetadataSources(registry)
                     .addAnnotatedClass(Token.class)
                     .addAnnotatedClass(TokenTransition.class)
+                    .addAnnotatedClass(ImportedFile.class)
+                    .addAnnotatedClass(GeneratedSentence.class)
                     .buildMetadata()
                     .buildSessionFactory();
         } catch (Exception e) {
