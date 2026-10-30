@@ -22,3 +22,5 @@ You must make an environment variable on your computer first
 - add new variables named: "SB_DB_PASSWORD", "SB_DB_URL", "SB_DB_USER"
 - variable values must be the ones from pinned Discord messages
 - hit ok
+
+test
