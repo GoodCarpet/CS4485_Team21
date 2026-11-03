@@ -1,135 +1,205 @@
 package com.oetd.sentencebuilder;
 
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
-// Minchan Kwon
-// Class to handle Markov Chain text generation using Hibernate ORM (Token & TokenTransition)
 public class MarkovGenerator {
-    private final SessionFactory sessionFactory;
-    // Key = Current Word, Value = Map of (Next Word -> Weight/Frequency)
-    private final Map<String, Map<String, Integer>> transitionMap;
-    // Key = Start Word, Value = start_count (for picking a random starting word)
-    private final Map<String, Integer> startWordsMap;
-    private final Random random;
 
-    // Constructor accepting the shared Hibernate SessionFactory
-    public MarkovGenerator(SessionFactory sessionFactory) {
-        this.sessionFactory = sessionFactory;
-        this.transitionMap = new HashMap<>();
-        this.startWordsMap = new HashMap<>();
-        this.random = new Random();
+    // 3+ Generation Algorithms for UI Dropdown Selection
+    public enum Algorithm {
+        WEIGHTED_MARKOV("Weighted Markov Chain"),
+        GREEDY_MOST_FREQUENT("Greedy (Most Frequent Next Word)"),
+        RANDOM_WALK("Random Walk (Uniform Next Word)"),
+        PURE_RANDOM_WORDS("Pure Random Words (Unconnected)");
+
+        private final String displayName;
+
+        Algorithm(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
     }
 
-    // 1. Load token and transition data from DB using Hibernate ORM
-    public void loadTransitionsFromDB() {
-        transitionMap.clear();
-        startWordsMap.clear();
+    private SessionFactory sessionFactory;
 
+    // Maps currentWord -> (nextWord -> transitionWeight)
+    private final Map<String, Map<String, Integer>> transitionMap = new HashMap<>();
+    // Maps startWord -> startCount
+    private final Map<String, Integer> startWordsMap = new HashMap<>();
+    // Maps word -> totalCount (for fallback and pure random modes)
+    private final Map<String, Integer> allWordsMap = new HashMap<>();
+
+    private final Random random = new Random();
+
+    public MarkovGenerator() {
+    }
+
+    public MarkovGenerator(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
+    }
+
+    public void setSessionFactory(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
+    }
+
+    /**
+     * Checks if a token is purely punctuation (e.g., ",", ".", "'", "\"")
+     * so we can prevent sentences from starting with punctuation.
+     */
+    public boolean isPunctuation(String word) {
+        if (word == null || word.trim().isEmpty()) {
+            return true;
+        }
+        // Returns true if the token contains NO letters or digits
+        return !word.matches(".*[a-zA-Z0-9].*");
+    }
+
+    /**
+     * Loads all tokens and transitions from the database using Hibernate ORM.
+     */
+    public void loadTransitionsFromDB() {
         if (sessionFactory == null) {
-            System.out.println("SessionFactory is null. Skipping ORM query.");
+            System.err.println("SessionFactory is not initialized in MarkovGenerator.");
             return;
         }
 
-        try {
-            sessionFactory.inTransaction(session -> {
-                // 1) Load all tokens and map token_id -> token_text
-                List<Token> tokens = session.createQuery("from Token", Token.class).getResultList();
-                Map<Long, String> idToWordMap = new HashMap<>();
+        transitionMap.clear();
+        startWordsMap.clear();
+        allWordsMap.clear();
 
-                for (Token t : tokens) {
-                    idToWordMap.put(t.getToken_id(), t.getToken_text());
-                    if (t.getStart_count() != null && t.getStart_count() > 0) {
-                        startWordsMap.put(t.getToken_text(), t.getStart_count().intValue());
+        try (Session session = sessionFactory.openSession()) {
+            List<Token> tokens = session.createQuery("from Token", Token.class).getResultList();
+            Map<Long, String> idToTextMap = new HashMap<>();
+
+            for (Token t : tokens) {
+                if (t.getToken_id() != null && t.getToken_text() != null) {
+                    String text = t.getToken_text().trim();
+                    idToTextMap.put(t.getToken_id(), text);
+
+                    int totalCount = t.getTotal_count() != null ? t.getTotal_count().intValue() : 1;
+                    allWordsMap.put(text, Math.max(1, totalCount));
+
+                    // Only add to startWordsMap if start_count > 0 AND it is NOT punctuation
+                    if (t.getStart_count() != null && t.getStart_count() > 0 && !isPunctuation(text)) {
+                        startWordsMap.put(text, t.getStart_count().intValue());
                     }
                 }
+            }
 
-                // 2) Load transitions from TokenTransition entity
-                List<TokenTransition> transitions = session.createQuery("from TokenTransition", TokenTransition.class).getResultList();
-                int loadedTransitions = 0;
+            List<TokenTransition> transitions = session.createQuery("from TokenTransition", TokenTransition.class).getResultList();
+            for (TokenTransition tt : transitions) {
+                if (tt.getId() != null) {
+                    String prevWord = idToTextMap.get(tt.getId().getPreviousTokenId());
+                    String nextWord = idToTextMap.get(tt.getId().getNextTokenId());
 
-                for (TokenTransition tt : transitions) {
-                    Long prevId = null;
-                    Long nextId = null;
+                    if (prevWord != null && nextWord != null) {
+                        int occurrences = tt.getOccurrenceCount() != null ? tt.getOccurrenceCount().intValue() : 0;
+                        int userSelections = tt.getUserSelectionCount() != null ? tt.getUserSelectionCount().intValue() : 0;
+                        int weight = occurrences + userSelections;
 
-                    // Extract IDs via composite key
-                    if (tt.getId() != null) {
-                        prevId = tt.getId().getPreviousTokenId();
-                        nextId = tt.getId().getNextTokenId();
-                    }
-
-                    String prevWord = idToWordMap.get(prevId);
-                    String nextWord = idToWordMap.get(nextId);
-                    Long occCount = tt.getOccurrenceCount();
-
-                    if (prevWord != null && nextWord != null && occCount != null && occCount > 0) {
-                        addTransition(prevWord, nextWord, occCount.intValue());
-                        loadedTransitions++;
+                        if (weight > 0) {
+                            addTransition(prevWord, nextWord, weight);
+                        }
                     }
                 }
+            }
 
-                System.out.println("Loaded " + tokens.size() + " tokens and " + loadedTransitions + " transitions via Hibernate ORM.");
-            });
+            System.out.println("Loaded " + tokens.size() + " tokens and " + transitions.size() + " transitions via Hibernate ORM.");
         } catch (Exception e) {
-            System.out.println("Error loading transitions via Hibernate: " + e.getMessage());
+            System.err.println("Error loading transitions via Hibernate: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    // 2. Add word transition data into memory
+    /**
+     * Adds or updates a word transition in memory.
+     */
     public void addTransition(String currentWord, String nextWord, int count) {
-        transitionMap.putIfAbsent(currentWord, new HashMap<>());
-        Map<String, Integer> nextWords = transitionMap.get(currentWord);
-        nextWords.put(nextWord, nextWords.getOrDefault(nextWord, 0) + count);
+        if (currentWord == null || nextWord == null || count <= 0) {
+            return;
+        }
+        transitionMap.computeIfAbsent(currentWord, k -> new HashMap<>())
+                .merge(nextWord, count, Integer::sum);
+        allWordsMap.merge(currentWord, count, Integer::sum);
+        allWordsMap.merge(nextWord, count, Integer::sum);
     }
 
-    // 3. Pick a random starting word based on start_count weights in the DB
-    public String getRandomStartWord() {
-        if (!startWordsMap.isEmpty()) {
-            return pickWeightedRandom(startWordsMap);
-        }
-        if (!transitionMap.isEmpty()) {
-            List<String> keys = new ArrayList<>(transitionMap.keySet());
-            return keys.get(random.nextInt(keys.size()));
-        }
-        return null;
-    }
-
-    // 4. Pick the next word based on weighted random probability
-    public String getNextWord(String currentWord) {
+    /**
+     * Helper for UI Auto-Complete: Returns top N suggested next words sorted by frequency.
+     */
+    public List<String> getTopNextWords(String currentWord, int limit) {
         Map<String, Integer> nextWords = transitionMap.get(currentWord);
         if (nextWords == null || nextWords.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
-        return pickWeightedRandom(nextWords);
+        return nextWords.entrySet().stream()
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
     }
 
-    // Helper method for weighted random selection
-    private String pickWeightedRandom(Map<String, Integer> weightMap) {
-        int totalWeight = 0;
-        for (int weight : weightMap.values()) {
-            totalWeight += weight;
+    /**
+     * Default sentence generation (Weighted Markov Chain).
+     */
+    public String generateSentence(int maxLength) {
+        return generateSentence(Algorithm.WEIGHTED_MARKOV, maxLength);
+    }
+
+    /**
+     * Generates a sentence using the specified Algorithm and a random valid starting word.
+     */
+    public String generateSentence(Algorithm algorithm, int maxLength) {
+        if (transitionMap.isEmpty() && allWordsMap.isEmpty()) {
+            return "No data available to generate a sentence.";
         }
-        if (totalWeight <= 0) return null;
+        String startWord = pickStartWord(algorithm);
+        if (startWord == null) {
+            return "No valid starting words found in DB.";
+        }
+        return generateSentence(startWord, maxLength, algorithm);
+    }
 
-        int randWeight = random.nextInt(totalWeight);
-        int cumulativeWeight = 0;
+    /**
+     * Generates a sentence starting with a specific word (Weighted Markov by default).
+     */
+    public String generateSentence(String startWord, int maxLength) {
+        return generateSentence(startWord, maxLength, Algorithm.WEIGHTED_MARKOV);
+    }
 
-        for (Map.Entry<String, Integer> entry : weightMap.entrySet()) {
-            cumulativeWeight += entry.getValue();
-            if (randWeight < cumulativeWeight) {
-                return entry.getKey();
+    /**
+     * Generates a sentence starting with a specific word and chosen Algorithm.
+     */
+    public String generateSentence(String startWord, int maxLength, Algorithm algorithm) {
+        if (startWord == null || startWord.trim().isEmpty()) {
+            return generateSentence(algorithm, maxLength);
+        }
+
+        startWord = startWord.trim();
+
+        // If user or randomizer picked a punctuation mark as startWord, pick a clean start word instead
+        if (isPunctuation(startWord)) {
+            startWord = pickStartWord(algorithm);
+            if (startWord == null) {
+                return "No valid non-punctuation starting words found.";
             }
         }
-        return null;
-    }
 
-    // 5. Generate a sentence starting from a specific word
-    public String generateSentence(String startWord, int maxLength) {
-        if (startWord == null || !transitionMap.containsKey(startWord)) {
+        if (algorithm != Algorithm.PURE_RANDOM_WORDS && !transitionMap.containsKey(startWord)) {
             return "Start word ('" + startWord + "') not found or has no outgoing transitions in DB.";
         }
 
@@ -137,36 +207,147 @@ public class MarkovGenerator {
         String currentWord = startWord;
 
         for (int i = 0; i < maxLength - 1; i++) {
-            String nextWord = getNextWord(currentWord);
+            String nextWord = pickNextWord(currentWord, algorithm);
             if (nextWord == null) {
                 break;
             }
-            sentence.append(" ").append(nextWord);
+
+            // Attach punctuation directly without a leading space (e.g., "word," instead of "word ,")
+            if (isPunctuation(nextWord)) {
+                sentence.append(nextWord);
+            } else {
+                sentence.append(" ").append(nextWord);
+            }
+
             currentWord = nextWord;
 
-            if (nextWord.endsWith(".") || nextWord.endsWith("!") || nextWord.endsWith("?")) {
+            // Stop early if the token ends with sentence-ending punctuation
+            if (currentWord.endsWith(".") || currentWord.endsWith("!") || currentWord.endsWith("?")) {
                 break;
             }
         }
+
         return sentence.toString();
     }
 
-    // 6. Generate a sentence using a random starting word from DB
-    public String generateSentence(int maxLength) {
-        String startWord = getRandomStartWord();
-        if (startWord == null) {
-            return "No data available in the database to generate a sentence.";
+    /**
+     * Picks a valid starting word (never punctuation).
+     */
+    private String pickStartWord(Algorithm algorithm) {
+        // 1. Prefer words with start_count > 0 that also have outgoing transitions
+        Map<String, Integer> validStarts = new HashMap<>();
+        for (Map.Entry<String, Integer> entry : startWordsMap.entrySet()) {
+            String word = entry.getKey();
+            if (!isPunctuation(word) && (transitionMap.containsKey(word) || algorithm == Algorithm.PURE_RANDOM_WORDS)) {
+                validStarts.put(word, entry.getValue());
+            }
         }
-        return generateSentence(startWord, maxLength);
+
+        // 2. Fallback: Any non-punctuation word in transitionMap
+        if (validStarts.isEmpty()) {
+            for (String word : transitionMap.keySet()) {
+                if (!isPunctuation(word)) {
+                    validStarts.put(word, allWordsMap.getOrDefault(word, 1));
+                }
+            }
+        }
+
+        // 3. Last fallback: Any non-punctuation word in allWordsMap
+        if (validStarts.isEmpty()) {
+            for (Map.Entry<String, Integer> entry : allWordsMap.entrySet()) {
+                if (!isPunctuation(entry.getKey())) {
+                    validStarts.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
+        if (validStarts.isEmpty()) {
+            return null;
+        }
+
+        if (algorithm == Algorithm.GREEDY_MOST_FREQUENT) {
+            return getMostFrequentWord(validStarts);
+        } else if (algorithm == Algorithm.RANDOM_WALK || algorithm == Algorithm.PURE_RANDOM_WORDS) {
+            List<String> keys = new ArrayList<>(validStarts.keySet());
+            return keys.get(random.nextInt(keys.size()));
+        } else {
+            return getWeightedRandomWord(validStarts);
+        }
     }
 
-    // Standalone test method using Hibernate SessionFactory with Environment Variables
+    /**
+     * Picks the next word according to the chosen Algorithm.
+     */
+    private String pickNextWord(String currentWord, Algorithm algorithm) {
+        if (algorithm == Algorithm.PURE_RANDOM_WORDS) {
+            if (allWordsMap.isEmpty()) return null;
+            List<String> allWords = new ArrayList<>(allWordsMap.keySet());
+            return allWords.get(random.nextInt(allWords.size()));
+        }
+
+        Map<String, Integer> nextWords = transitionMap.get(currentWord);
+        if (nextWords == null || nextWords.isEmpty()) {
+            return null;
+        }
+
+        switch (algorithm) {
+            case GREEDY_MOST_FREQUENT:
+                return getMostFrequentWord(nextWords);
+            case RANDOM_WALK:
+                List<String> candidates = new ArrayList<>(nextWords.keySet());
+                return candidates.get(random.nextInt(candidates.size()));
+            case WEIGHTED_MARKOV:
+            default:
+                return getWeightedRandomWord(nextWords);
+        }
+    }
+
+    private String getWeightedRandomWord(Map<String, Integer> wordWeights) {
+        int totalWeight = 0;
+        for (int weight : wordWeights.values()) {
+            totalWeight += weight;
+        }
+        if (totalWeight <= 0) {
+            return null;
+        }
+
+        int randVal = random.nextInt(totalWeight);
+        int cumulative = 0;
+        for (Map.Entry<String, Integer> entry : wordWeights.entrySet()) {
+            cumulative += entry.getValue();
+            if (randVal < cumulative) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private String getMostFrequentWord(Map<String, Integer> wordWeights) {
+        String bestWord = null;
+        int maxWeight = -1;
+        for (Map.Entry<String, Integer> entry : wordWeights.entrySet()) {
+            if (entry.getValue() > maxWeight) {
+                maxWeight = entry.getValue();
+                bestWord = entry.getKey();
+            }
+        }
+        return bestWord;
+    }
+
+    public Map<String, Map<String, Integer>> getTransitionMap() {
+        return transitionMap;
+    }
+
+    // Standalone test runner
     public static void main(String[] args) {
         String url = System.getenv("SB_DB_URL");
         String user = System.getenv("SB_DB_USER");
         String password = System.getenv("SB_DB_PASSWORD");
 
         StandardServiceRegistryBuilder builder = new StandardServiceRegistryBuilder();
+        // Prevent dropping tables during standalone test
+        builder.applySetting("hibernate.hbm2ddl.auto", "validate");
+
         if (url != null) {
             builder.applySetting("hibernate.connection.url", url);
             builder.applySetting("jakarta.persistence.jdbc.url", url);
@@ -193,15 +374,23 @@ public class MarkovGenerator {
             if (generator.transitionMap.isEmpty()) {
                 System.out.println("DB transition tables are currently empty! Testing with fallback sample data...");
                 generator.addTransition("The", "quick", 5);
+                generator.addTransition("The", "lazy", 2);
                 generator.addTransition("quick", "brown", 5);
-                generator.addTransition("brown", "fox.", 4);
-                System.out.println("Sample Sentence: " + generator.generateSentence("The", 15));
-            } else {
-                System.out.println("\n=== [Generating Sentences via Hibernate ORM] ===");
-                for (int i = 1; i <= 5; i++) {
-                    System.out.println("Sentence " + i + ": " + generator.generateSentence(20));
-                }
+                generator.addTransition("lazy", "dog", 3);
+                generator.addTransition("brown", "fox", 4);
+                generator.addTransition("fox", ",", 3);
+                generator.addTransition(",", "jumps", 3);
+                generator.addTransition("jumps", "over", 4);
+                generator.addTransition("over", "the", 4);
+                generator.addTransition("the", "lazy", 4);
+                generator.addTransition("dog", ".", 5);
             }
+
+            System.out.println("\n=== [Testing All 4 Generation Algorithms] ===");
+            for (Algorithm algo : Algorithm.values()) {
+                System.out.println("[" + algo.getDisplayName() + "] -> " + generator.generateSentence(algo, 20));
+            }
+
         } catch (Exception e) {
             StandardServiceRegistryBuilder.destroy(registry);
             e.printStackTrace();
