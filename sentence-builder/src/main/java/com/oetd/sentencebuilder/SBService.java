@@ -24,6 +24,9 @@ import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+// Aniq Sunesara
+// Prompt: "in sbservice, create an updated addfile function that will split the words, normalize them,
+// and separate punctuations into their own tokens. Then update the Token table, Token_Transition table, and the Imported_File Table accordingly."
 /** Import normalized words and standalone punctuation into the shared MySQL schema. */
 public class SBService {
     // Keeps prepared statements small when importing an entire novel.
@@ -130,6 +133,10 @@ public class SBService {
     }
 
 
+    // Aniq Sunesara
+    // Prompt: "in SBService, add a function that takes a string of a sentence and string of a generation method as input.
+    // The function will then parse the sentence, update the counts of the tokens used, and adds the generated sentence and
+    // all its properties into the database via the GeneratedSentence ORM"
     /**
      * Records a generated sentence and includes it in the token corpus.
      *
