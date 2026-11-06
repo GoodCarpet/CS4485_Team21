@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 // Aniq Sunesara
@@ -32,8 +33,8 @@ public class ImportedFile {
     private Long tokenCount = 0L;
 
     // The database supplies CURRENT_TIMESTAMP on INSERT.
-    @Column(name = "imported_at", nullable = false, insertable = false,
-            updatable = false, columnDefinition = "TIMESTAMP")
+    @Column(name = "imported_at", nullable = false)
+    @CreationTimestamp
     private LocalDateTime importedAt;
 
     protected ImportedFile() { }
