@@ -48,9 +48,10 @@ public class SentenceBuilder extends Application {
 
         try {
             sessionFactory = new MetadataSources(registry)
-                    // Add tables to be persisted
                     .addAnnotatedClass(Token.class)
                     .addAnnotatedClass(TokenTransition.class)
+                    .addAnnotatedClass(ImportedFile.class)
+                    .addAnnotatedClass(GeneratedSentence.class)
                     .buildMetadata()
                     .buildSessionFactory();
         } catch (Exception e) {
@@ -128,6 +129,11 @@ public class SentenceBuilder extends Application {
             }
 
             textField.setText(sentence);
+            // Aniq Sunesara
+            // add the generated sentence into the database
+            // second parameter should be changed according to generation method when more have been developed
+            service.addGeneratedSentence(sentence, "MARKOV");
+
         });
 
         // Setup layouts and scene
