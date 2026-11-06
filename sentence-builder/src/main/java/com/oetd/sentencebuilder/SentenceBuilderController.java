@@ -9,6 +9,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.HBox;
 import javafx.util.StringConverter;
 import java.time.LocalDateTime;
 import javafx.stage.FileChooser;
@@ -16,6 +17,8 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SentenceBuilderController {
 
@@ -54,6 +57,9 @@ public class SentenceBuilderController {
 
     @FXML
     private ComboBox<MarkovGenerator.Algorithm> algorithmComboBox;
+
+    @FXML
+    private HBox autoSuggestBox;
 
     private AppContext appContext;
     private Stage stage;
@@ -118,12 +124,14 @@ public class SentenceBuilderController {
     @FXML
     private void handleGenerate() {
         Token selectedToken = tokenTableView.getSelectionModel().getSelectedItem();
+
         MarkovGenerator.Algorithm algorithm = algorithmComboBox.getValue();
         if (algorithm == null) {
             algorithm = MarkovGenerator.Algorithm.WEIGHTED_MARKOV;
         }
 
         String sentence;
+
         if (selectedToken != null && selectedToken.getToken_text() != null) {
             sentence = appContext.getMarkovGenerator().generateSentence(selectedToken.getToken_text(), 20, algorithm);
         } else {
@@ -131,6 +139,30 @@ public class SentenceBuilderController {
         }
 
         generatedTextField.setText(sentence);
+    }
+
+    @FXML
+    private void handleAutoSuggest() {
+        autoSuggestBox.getChildren().clear();
+
+        String[] words = generatedTextField.getText().split("\\s+");
+        String lastWord = words[words.length - 1];
+
+        List<Token> nextTokens = appContext.getSbService().searchTokens(lastWord, 3);
+
+        for(Token nextToken : nextTokens) {
+
+            String tokenText = nextToken.getToken_text();
+
+            Button nextWordButton = new Button(tokenText);
+            autoSuggestBox.getChildren().add(nextWordButton);
+
+            nextWordButton.setOnAction(event -> {
+               words[words.length - 1] = tokenText;
+               generatedTextField.setText(String.join(" ", words));
+            });
+        }
+
     }
 
     private void refreshTokens() {

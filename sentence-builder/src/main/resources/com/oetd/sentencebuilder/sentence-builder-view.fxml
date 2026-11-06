@@ -24,7 +24,9 @@
         <Button fx:id="generateButton" text="Generate" onAction="#handleGenerate"/>
     </HBox>
 
-    <TextField fx:id="generatedTextField" promptText="Generated sentence..."/>
+    <TextField fx:id="generatedTextField" promptText="Generated sentence..." onKeyTyped="#handleAutoSuggest"/>
+    <HBox fx:id="autoSuggestBox" spacing="10.0" alignment="CENTER_LEFT">
+    </HBox>
 
     <TableView fx:id="tokenTableView" VBox.vgrow="ALWAYS">
         <columns>

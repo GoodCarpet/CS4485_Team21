@@ -11,13 +11,7 @@ import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -221,6 +215,17 @@ public class SBService {
     public Token getTokenByText(String token_text){
         return sessionFactory.fromTransaction(sess -> {
             return sess.createQuery("FROM Token t where t.token_text = :text", Token.class).setParameter("text", token_text).setMaxResults(1).getResultStream().findFirst().orElse(null);
+        });
+    }
+
+    public List<Token> searchTokens(String currentString, int count){
+        return sessionFactory.fromTransaction(sess -> {
+            return sess
+                    .createQuery("FROM Token t where t.token_text LIKE :text", Token.class)
+                    .setParameter("text", currentString + "%")
+                    .setMaxResults(count)
+                    .getResultStream()
+                    .toList();
         });
     }
 
