@@ -1,11 +1,6 @@
 package com.oetd.sentencebuilder;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 // Aniq Sunesara
@@ -31,11 +26,16 @@ public class ImportedFile {
     @Column(name = "token_count", nullable = false)
     private Long tokenCount = 0L;
 
-    // The database supplies CURRENT_TIMESTAMP on INSERT.
-    @Column(name = "imported_at", nullable = false, insertable = false,
+    @Column(name = "imported_at", nullable = false,
             updatable = false, columnDefinition = "TIMESTAMP")
     private LocalDateTime importedAt;
 
+    @PrePersist
+    private void setCreationTimestamp() {
+        if (importedAt == null) {
+            importedAt = LocalDateTime.now();
+        }
+    }
     protected ImportedFile() { }
 
     public ImportedFile(String fileName, String fileHash, long tokenCount) {

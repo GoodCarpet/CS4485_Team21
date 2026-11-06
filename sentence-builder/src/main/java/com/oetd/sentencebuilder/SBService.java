@@ -27,6 +27,11 @@ import java.util.regex.Pattern;
 // Aniq Sunesara
 // Prompt: "in sbservice, create an updated addfile function that will split the words, normalize them,
 // and separate punctuations into their own tokens. Then update the Token table, Token_Transition table, and the Imported_File Table accordingly."
+
+// Aniq Sunesara
+// Prompt: "in SBService, add a function that takes a string of a sentence and string of a generation method as input.
+// The function will then parse the sentence, update the counts of the tokens used, and adds the generated sentence and
+// all its properties into the database via the GeneratedSentence ORM"
 /** Import normalized words and standalone punctuation into the shared MySQL schema. */
 public class SBService {
     // Keeps prepared statements small when importing an entire novel.
@@ -133,10 +138,6 @@ public class SBService {
     }
 
 
-    // Aniq Sunesara
-    // Prompt: "in SBService, add a function that takes a string of a sentence and string of a generation method as input.
-    // The function will then parse the sentence, update the counts of the tokens used, and adds the generated sentence and
-    // all its properties into the database via the GeneratedSentence ORM"
     /**
      * Records a generated sentence and includes it in the token corpus.
      *
@@ -263,12 +264,15 @@ public class SBService {
 
             StringJoiner values = new StringJoiner(",");
             for (int i = 0; i < batch.size(); i++) {
-                values.add("(?,?,?,?)");
+                // The deployed Token table requires an explicit created_at value.
+                // CURRENT_TIMESTAMP is evaluated by MySQL, so no Java parameter is needed.
+                values.add("(?,?,?,?,CURRENT_TIMESTAMP)");
             }
 
             // MySQL 8.4 syntax: row alias after VALUES, not deprecated VALUES(col).
+            // On duplicate keys, only frequency counters change; created_at stays intact.
             String upsertSql =
-                    "INSERT INTO `Token` (`token_text`, `total_count`, `start_count`, `end_count`) " +
+                    "INSERT INTO `Token` (`token_text`, `total_count`, `start_count`, `end_count`, `created_at`) " +
                             "VALUES " + values + " AS incoming " +
                             "ON DUPLICATE KEY UPDATE " +
                             "`total_count` = `Token`.`total_count` + incoming.`total_count`, " +
@@ -396,3 +400,4 @@ public class SBService {
                 session.createQuery("from Token", Token.class).getResultList());
     }
 }
+
