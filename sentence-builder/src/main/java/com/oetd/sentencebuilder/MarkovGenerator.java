@@ -302,6 +302,8 @@ public class MarkovGenerator {
         }
     }
 
+
+
     private String getWeightedRandomWord(Map<String, Integer> wordWeights) {
         int totalWeight = 0;
         for (int weight : wordWeights.values()) {
