@@ -26,8 +26,9 @@ public class ImportedFile {
     @Column(name = "token_count", nullable = false)
     private Long tokenCount = 0L;
 
-    @Column(name = "imported_at", nullable = false,
-            updatable = false, columnDefinition = "TIMESTAMP")
+    // The database supplies CURRENT_TIMESTAMP on INSERT.
+    @Column(name = "imported_at", nullable = false)
+    @CreationTimestamp
     private LocalDateTime importedAt;
 
     @PrePersist

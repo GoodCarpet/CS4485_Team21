@@ -13,14 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.Normalizer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.StringJoiner;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -398,6 +391,48 @@ public class SBService {
     public List<Token> getTokens() {
         return sessionFactory.fromTransaction(session ->
                 session.createQuery("from Token", Token.class).getResultList());
+    }
+
+    public Token getTokenByText(String token_text){
+        return sessionFactory.fromTransaction(sess -> {
+            return sess.createQuery("FROM Token t where t.token_text = :text", Token.class).setParameter("text", token_text).setMaxResults(1).getResultStream().findFirst().orElse(null);
+        });
+    }
+
+    public List<Token> searchTokens(String currentString, int count){
+        return sessionFactory.fromTransaction(sess -> {
+            return sess
+                    .createQuery("FROM Token t where t.token_text LIKE :text", Token.class)
+                    .setParameter("text", currentString + "%")
+                    .setMaxResults(count)
+                    .getResultStream()
+                    .toList();
+        });
+    }
+
+    public Token getNextToken(Token prevToken) {
+        return sessionFactory.fromTransaction(sess -> {
+            CriteriaBuilder cb = sess.getCriteriaBuilder();
+            var query = cb.createQuery(TokenTransition.class);
+            var root = query.from(TokenTransition.class);
+
+            query.select(root)
+                 .where(cb.equal(root.get("id").get("previousTokenId"), prevToken.getToken_id()))
+                 .orderBy(cb.desc(root.get("occurrenceCount")));
+
+            TokenTransition transition = sess.createQuery(query)
+                    .setMaxResults(1)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+
+            if (transition == null) {
+                return null;
+            }
+
+            Long nextTokenId = transition.getId().getNextTokenId();
+            return sess.find(Token.class, nextTokenId);
+        });
     }
 }
 
