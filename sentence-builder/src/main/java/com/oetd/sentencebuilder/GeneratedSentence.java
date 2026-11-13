@@ -1,5 +1,5 @@
 package com.oetd.sentencebuilder;
-
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -13,6 +13,9 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 // Aniq Sunesara
 // prompt: make a java ORM mapping file for both the Imported_File and Generated_Sentence tables
+
+import java.time.LocalDateTime;
+
 /** Maps the existing Generated_Sentence table. */
 @Entity
 @Table(name = "Generated_Sentence")
@@ -42,10 +45,17 @@ public class GeneratedSentence {
     @Column(name = "added_to_corpus", nullable = false)
     private Boolean addedToCorpus = false;
 
-    // The database supplies CURRENT_TIMESTAMP on INSERT.
-    @Column(name = "generated_at", nullable = false, insertable = false,
+    // Provide a timestamp explicitly because the live table may not have a DEFAULT.
+    @Column(name = "generated_at", nullable = false,
             updatable = false, columnDefinition = "TIMESTAMP")
     private LocalDateTime generatedAt;
+
+    @PrePersist
+    private void setCreationTimestamp() {
+        if (generatedAt == null) {
+            generatedAt = LocalDateTime.now();
+        }
+    }
 
     protected GeneratedSentence() { }
 
