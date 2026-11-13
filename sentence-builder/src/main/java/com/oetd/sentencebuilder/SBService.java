@@ -1,5 +1,6 @@
 package com.oetd.sentencebuilder;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
 import org.hibernate.SessionFactory;
 
 import java.io.File;
@@ -242,6 +243,44 @@ public class SBService {
         }
     }
 
+    // When the user selects an autofill choice update the user selection count of the transition
+    public void incrementUserSelectionOfTransition(Token t1, Token t2) {
+        Objects.requireNonNull(t1, "Previous token cannot be null.");
+        Objects.requireNonNull(t2, "Selected token cannot be null.");
+
+        Long previousId = t1.getToken_id();
+        Long nextId = t2.getToken_id();
+
+        if (previousId == null || nextId == null) {
+            throw new IllegalArgumentException(
+                    "Both tokens must already exist in the database."
+            );
+        }
+
+        sessionFactory.inTransaction(session -> {
+            session.doWork(connection -> {
+                String sql = "UPDATE `Token_Transition` " +
+                        "SET `user_selection_count` = `user_selection_count` + 1 " +
+                        "WHERE `previous_token_id` = ? AND `next_token_id` = ?";
+
+                try (PreparedStatement statement =
+                             connection.prepareStatement(sql)) {
+
+                    statement.setLong(1, previousId);
+                    statement.setLong(2, nextId);
+
+                    int updatedRows = statement.executeUpdate();
+
+                    if (updatedRows != 1) {
+                        throw new SQLException(
+                                "Transition not found: " + previousId + " -> " + nextId
+                        );
+                    }
+                }
+            });
+        });
+    }
+
     private static Map<String, Long> upsertTokens(
             Connection connection,
             Map<String, Long> counts,
@@ -314,6 +353,8 @@ public class SBService {
         }
         return tokenIds;
     }
+
+
 
     private static void upsertTransitions(
             Connection connection, List<String> words, Map<String, Long> tokenIds)
@@ -399,6 +440,7 @@ public class SBService {
         });
     }
 
+    // for autofill
     public List<Token> searchTokens(String currentString, int count){
         return sessionFactory.fromTransaction(sess -> {
             return sess

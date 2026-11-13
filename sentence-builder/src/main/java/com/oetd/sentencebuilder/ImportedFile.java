@@ -1,6 +1,7 @@
 package com.oetd.sentencebuilder;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 // Aniq Sunesara

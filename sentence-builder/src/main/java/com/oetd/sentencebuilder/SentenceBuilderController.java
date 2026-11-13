@@ -137,8 +137,10 @@ public class SentenceBuilderController {
         } else {
             sentence = appContext.getMarkovGenerator().generateSentence(algorithm, 20);
         }
-
         generatedTextField.setText(sentence);
+        // Aniq Sunesara
+        // add the sentence into generated sentences table and update values of tokens
+        appContext.getSbService().addGeneratedSentence(sentence, algorithm.getDisplayName());
     }
 
     @FXML
@@ -147,7 +149,6 @@ public class SentenceBuilderController {
 
         String[] words = generatedTextField.getText().split("\\s+");
         String lastWord = words[words.length - 1];
-
         List<Token> nextTokens = appContext.getSbService().searchTokens(lastWord, 3);
 
         for(Token nextToken : nextTokens) {
