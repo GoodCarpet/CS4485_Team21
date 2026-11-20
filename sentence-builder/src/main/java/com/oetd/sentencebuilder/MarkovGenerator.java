@@ -284,7 +284,11 @@ public class MarkovGenerator {
      */
     public List<String> getTopNextWords(String currentWord, int limit) {
         if (currentWord == null) {
-            return Collections.emptyList();
+            return startWordsMap.entrySet().stream()
+                    .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                    .limit(limit)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
         }
         Map<String, Integer> nextWords = transitionMap.get(currentWord.trim());
         if (nextWords == null || nextWords.isEmpty()) {
