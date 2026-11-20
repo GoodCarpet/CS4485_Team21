@@ -1,0 +1,17 @@
+/* Only the Generated Sentences table receives duplicate-hash highlighting. */
+#generatedSentencesTableView .table-row-cell:matching-sentence-hash {
+    -fx-background-color: #fff0bd;
+}
+
+#generatedSentencesTableView .table-row-cell:matching-sentence-hash .table-cell {
+    -fx-text-fill: #453100;
+}
+
+/* Make the actively selected row distinct from its other hash matches. */
+#generatedSentencesTableView .table-row-cell:matching-sentence-hash:selected {
+    -fx-background-color: #e8b347;
+}
+
+#generatedSentencesTableView .table-row-cell:matching-sentence-hash:selected .table-cell {
+    -fx-text-fill: #231b09;
+}
