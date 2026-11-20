@@ -429,6 +429,22 @@ public class SBService {
         }
     }
 
+    /**
+     * Returns saved generated sentences, newest first.
+     * Fetching the starting token in the same session avoids lazy-loading
+     * errors when the JavaFX table accesses its text after the session closes.
+     * This method only reads from the database.
+     */
+    public List<GeneratedSentence> getGeneratedSentences() {
+        return sessionFactory.fromTransaction(session ->
+                session.createQuery(
+                        "select g from GeneratedSentence g " +
+                                "left join fetch g.startingToken " +
+                                "order by g.generatedAt desc, g.sentenceId desc",
+                        GeneratedSentence.class
+                ).getResultList());
+    }
+
     public List<Token> getTokens() {
         return sessionFactory.fromTransaction(session ->
                 session.createQuery("from Token", Token.class).getResultList());
@@ -459,8 +475,8 @@ public class SBService {
             var root = query.from(TokenTransition.class);
 
             query.select(root)
-                 .where(cb.equal(root.get("id").get("previousTokenId"), prevToken.getToken_id()))
-                 .orderBy(cb.desc(root.get("occurrenceCount")));
+                    .where(cb.equal(root.get("id").get("previousTokenId"), prevToken.getToken_id()))
+                    .orderBy(cb.desc(root.get("occurrenceCount")));
 
             TokenTransition transition = sess.createQuery(query)
                     .setMaxResults(1)

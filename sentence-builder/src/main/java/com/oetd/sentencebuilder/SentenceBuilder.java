@@ -19,7 +19,7 @@ public class SentenceBuilder extends Application {
         controller.setAppContext(context);
         controller.setStage(stage);
 
-        Scene scene = new Scene(root, 600, 400);
+        Scene scene = new Scene(root, 1100, 680);
         stage.setScene(scene);
         stage.setTitle("Sentence Builder");
         stage.show();
