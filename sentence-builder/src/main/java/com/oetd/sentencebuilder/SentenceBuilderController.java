@@ -2,7 +2,10 @@ package com.oetd.sentencebuilder;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
+import javafx.css.PseudoClass;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -10,6 +13,8 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
+import javafx.scene.control.Tab;
+import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -21,6 +26,7 @@ import javafx.util.StringConverter;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +74,31 @@ public class SentenceBuilderController {
     @FXML
     private HBox autoSuggestBox;
 
+    // Aniq Sunesara
+    // prompt: Add a tab onto the GUI that will display all the generated sentences and related data
+    // make it so that when a certain entry is selected, duplicate sentences that have the same hash are also highlighted
+    // Generated Sentences tab, displaying persisted Generated_Sentence rows.
+    @FXML private Tab generatedSentencesTab;
+    @FXML private TableView<GeneratedSentence> generatedSentencesTableView;
+    @FXML private TableColumn<GeneratedSentence, Long> sentenceIdColumn;
+    @FXML private TableColumn<GeneratedSentence, String> sentenceTextColumn;
+    @FXML private TableColumn<GeneratedSentence, String> generationMethodColumn;
+    @FXML private TableColumn<GeneratedSentence, Long> startingTokenIdColumn;
+    @FXML private TableColumn<GeneratedSentence, String> startingTokenTextColumn;
+    @FXML private TableColumn<GeneratedSentence, String> addedToCorpusColumn;
+    @FXML private TableColumn<GeneratedSentence, String> generatedAtColumn;
+    @FXML private TableColumn<GeneratedSentence, String> sentenceHashColumn;
+    @FXML private TextArea generatedSentenceDetails;
+    @FXML private Label generatedSentenceCountLabel;
+    @FXML private Label matchingSentenceHashLabel;
+
+    private final ObservableList<GeneratedSentence> generatedSentences =
+            FXCollections.observableArrayList();
+    private static final PseudoClass MATCHING_HASH_PSEUDO_CLASS =
+            PseudoClass.getPseudoClass("matching-sentence-hash");
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private AppContext appContext;
     private Stage stage;
 
@@ -92,6 +123,65 @@ public class SentenceBuilderController {
         startCountColumn.setCellValueFactory(new PropertyValueFactory<>("startCount"));
         endCountColumn.setCellValueFactory(new PropertyValueFactory<>("endCount"));
         createdAtColumn.setCellValueFactory(new PropertyValueFactory<>("createdAt"));
+
+        // Display every saved sentence and its associated database metadata.
+        sentenceIdColumn.setCellValueFactory(cell ->
+                new ReadOnlyObjectWrapper<>(cell.getValue().getSentenceId()));
+        sentenceTextColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(cell.getValue().getSentenceText()));
+        generationMethodColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(cell.getValue().getGenerationMethod()));
+        startingTokenIdColumn.setCellValueFactory(cell -> {
+            Token starting = cell.getValue().getStartingToken();
+            return new ReadOnlyObjectWrapper<>(starting == null ? null : starting.getToken_id());
+        });
+        startingTokenTextColumn.setCellValueFactory(cell -> {
+            Token starting = cell.getValue().getStartingToken();
+            return new ReadOnlyStringWrapper(starting == null ? "" : starting.getToken_text());
+        });
+        addedToCorpusColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(Boolean.TRUE.equals(cell.getValue().getAddedToCorpus())
+                        ? "Yes" : "No"));
+        generatedAtColumn.setCellValueFactory(cell -> {
+            LocalDateTime timestamp = cell.getValue().getGeneratedAt();
+            return new ReadOnlyStringWrapper(timestamp == null ? "" : DATE_FORMAT.format(timestamp));
+        });
+        sentenceHashColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(cell.getValue().getSentenceHash()));
+
+        generatedSentencesTableView.setItems(generatedSentences);
+        generatedSentencesTableView.setPlaceholder(
+                new Label("No generated sentences saved yet."));
+        // Every visible row with the selected sentence's SHA-256 is highlighted,
+        // including the selected row. TableRow virtualization is handled by
+        // updateItem(): recycled rows always re-evaluate their current item.
+        generatedSentencesTableView.setRowFactory(table -> new TableRow<>() {
+            @Override
+            protected void updateItem(GeneratedSentence sentence, boolean empty) {
+                super.updateItem(sentence, empty);
+                GeneratedSentence selected = table.getSelectionModel().getSelectedItem();
+                String selectedHash = selected == null ? null : selected.getSentenceHash();
+                boolean matching = !empty && sentence != null && selectedHash != null
+                        && !selectedHash.isBlank()
+                        && selectedHash.equals(sentence.getSentenceHash());
+                pseudoClassStateChanged(MATCHING_HASH_PSEUDO_CLASS, matching);
+            }
+        });
+        generatedSentencesTableView.getSelectionModel().selectedItemProperty()
+                .addListener((obs, previous, selected) -> {
+                    showGeneratedSentenceDetails(selected);
+                    updateMatchingSentenceHashLabel(selected);
+                    // Refresh updates visible/recycled row pseudo-classes when selection changes.
+                    generatedSentencesTableView.refresh();
+                });
+
+        // Read from the database when the tab becomes visible, so sentences
+        // inserted by other team members will appear on the next visit.
+        generatedSentencesTab.setOnSelectionChanged(event -> {
+            if (generatedSentencesTab.isSelected() && appContext != null) {
+                refreshGeneratedSentences();
+            }
+        });
 
         algorithmComboBox.setItems(FXCollections.observableArrayList(MarkovGenerator.Algorithm.values()));
         algorithmComboBox.setValue(MarkovGenerator.Algorithm.WEIGHTED_MARKOV);
@@ -177,6 +267,8 @@ public class SentenceBuilderController {
         // Aniq Sunesara
         // add the sentence into generated sentences table and update values of tokens
         appContext.getSbService().addGeneratedSentence(sentence, algorithm.getDisplayName());
+        // Keep the saved-sentences tab up to date after a successful generation.
+        refreshGeneratedSentences();
 
         // Focus the TableView on the last word of the generated sentence
         String lastWord = appContext.getMarkovGenerator().extractLastWord(sentence);
@@ -349,6 +441,68 @@ public class SentenceBuilderController {
         }
 
         infoAlert.showAndWait();
+    }
+
+    @FXML
+    private void handleRefreshGeneratedSentences() {
+        refreshGeneratedSentences();
+    }
+
+    private void refreshGeneratedSentences() {
+        if (appContext == null) {
+            return;
+        }
+        try {
+            generatedSentences.setAll(appContext.getSbService().getGeneratedSentences());
+            generatedSentenceCountLabel.setText(generatedSentences.size() + " saved sentences");
+            updateMatchingSentenceHashLabel(
+                    generatedSentencesTableView.getSelectionModel().getSelectedItem());
+            generatedSentencesTableView.refresh();
+        } catch (RuntimeException exception) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Unable to load generated sentences");
+            alert.setHeaderText("Could not retrieve saved sentences from the database.");
+            alert.setContentText(exception.getMessage());
+            alert.showAndWait();
+        }
+    }
+
+    private void updateMatchingSentenceHashLabel(GeneratedSentence selected) {
+        if (selected == null || selected.getSentenceHash() == null
+                || selected.getSentenceHash().isBlank()) {
+            matchingSentenceHashLabel.setText("Select a sentence to highlight matching hashes");
+            return;
+        }
+
+        String hash = selected.getSentenceHash();
+        long matches = generatedSentences.stream()
+                .filter(sentence -> hash.equals(sentence.getSentenceHash()))
+                .count();
+        long otherMatches = Math.max(0L, matches - 1L);
+        matchingSentenceHashLabel.setText(otherMatches == 0
+                ? "No other sentences with this hash"
+                : otherMatches + (otherMatches == 1 ? " other matching sentence" : " other matching sentences"));
+    }
+
+    private void showGeneratedSentenceDetails(GeneratedSentence sentence) {
+        if (sentence == null) {
+            generatedSentenceDetails.clear();
+            return;
+        }
+        Token starting = sentence.getStartingToken();
+        String startInfo = starting == null
+                ? "(none)"
+                : starting.getToken_text() + " (ID " + starting.getToken_id() + ")";
+        LocalDateTime time = sentence.getGeneratedAt();
+        generatedSentenceDetails.setText(
+                "Sentence ID: " + sentence.getSentenceId() + "\n" +
+                        "Sentence: " + sentence.getSentenceText() + "\n" +
+                        "Generation method: " + sentence.getGenerationMethod() + "\n" +
+                        "Starting token: " + startInfo + "\n" +
+                        "Added to corpus: " + (Boolean.TRUE.equals(sentence.getAddedToCorpus()) ? "Yes" : "No") + "\n" +
+                        "Generated at: " + (time == null ? "" : DATE_FORMAT.format(time)) + "\n" +
+                        "SHA-256: " + sentence.getSentenceHash()
+        );
     }
 
     private void refreshTokens() {
