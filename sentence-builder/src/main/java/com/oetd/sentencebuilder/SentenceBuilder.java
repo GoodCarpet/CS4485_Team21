@@ -13,10 +13,12 @@ public class SentenceBuilder extends Application {
         AppContext context = new AppContext();
 
         FXMLLoader loader = new FXMLLoader(getClass().getResource("sentence-builder-view.fxml"));
+        loader.setControllerFactory(_controllerClass -> {
+            return new SentenceBuilderController(context);
+        });
         Parent root = loader.load();
 
         SentenceBuilderController controller = loader.getController();
-        controller.setAppContext(context);
         controller.setStage(stage);
 
         Scene scene = new Scene(root, 1100, 680);

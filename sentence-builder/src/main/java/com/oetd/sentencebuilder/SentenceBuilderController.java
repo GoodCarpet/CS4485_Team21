@@ -92,6 +92,10 @@ public class SentenceBuilderController {
     @FXML private Label generatedSentenceCountLabel;
     @FXML private Label matchingSentenceHashLabel;
 
+    public SentenceBuilderController(AppContext appContext){
+        this.appContext = appContext;
+    }
+
     private final ObservableList<GeneratedSentence> generatedSentences =
             FXCollections.observableArrayList();
     private static final PseudoClass MATCHING_HASH_PSEUDO_CLASS =
@@ -105,9 +109,6 @@ public class SentenceBuilderController {
     private final FileChooser fileChooser = new FileChooser();
     private final ObservableList<Token> tokens = FXCollections.observableArrayList();
 
-    public void setAppContext(AppContext appContext) {
-        this.appContext = appContext;
-    }
 
     public void setStage(Stage stage) {
         this.stage = stage;
@@ -221,6 +222,12 @@ public class SentenceBuilderController {
                 focusTokenInTable(lastWord);
             }
         });
+
+        MarkovGenerator generator = appContext.getMarkovGenerator();
+        List<String> suggestions = generator.getTopNextWords(null, 3);
+        for(String suggestion : suggestions){
+            this.addSuggestionButton(suggestion);
+        }
     }
 
     @FXML
@@ -252,6 +259,7 @@ public class SentenceBuilderController {
         Token selectedToken = tokenTableView.getSelectionModel().getSelectedItem();
 
         MarkovGenerator.Algorithm algorithm = algorithmComboBox.getValue();
+
         if (algorithm == null) {
             algorithm = MarkovGenerator.Algorithm.WEIGHTED_MARKOV;
         }
@@ -275,6 +283,22 @@ public class SentenceBuilderController {
         focusTokenInTable(lastWord);
     }
 
+    private void addSuggestionButton(String suggestion) {
+        String rawText = generatedTextField.getText();
+
+        Button nextBtn = new Button(suggestion);
+
+        nextBtn.setOnAction(e -> {
+            generatedTextField.setText(rawText + suggestion + " ");
+            generatedTextField.positionCaret(generatedTextField.getText().length());
+            focusTokenInTable(suggestion);
+            handleAutoSuggest();
+        });
+
+        autoSuggestBox.getChildren().add(nextBtn);
+
+    }
+
     @FXML
     private void handleAutoSuggest() {
         autoSuggestBox.getChildren().clear();
@@ -296,6 +320,7 @@ public class SentenceBuilderController {
         if (endsWithSpace) {
             // 1. If user just typed a space, check if the completed word is unknown (e.g., "crossbow")
             String cleanLast = lastWord.replaceAll("[^a-zA-Z0-9'-]", "");
+
             if (!cleanLast.isEmpty() && !generator.containsWord(cleanLast)) {
                 Button addWordBtn = new Button("+ Add '" + cleanLast + "'");
                 addWordBtn.setOnAction(e -> promptAndAddUnknownWords(rawText.trim()));
@@ -304,16 +329,11 @@ public class SentenceBuilderController {
 
             // 2. Suggest top next words based on Markov transitions from the completed word
             List<String> nextSuggestions = generator.getTopNextWords(cleanLast, 5);
+
             for (String suggestion : nextSuggestions) {
-                Button nextBtn = new Button(suggestion);
-                nextBtn.setOnAction(e -> {
-                    generatedTextField.setText(rawText + suggestion + " ");
-                    generatedTextField.positionCaret(generatedTextField.getText().length());
-                    focusTokenInTable(suggestion);
-                    handleAutoSuggest();
-                });
-                autoSuggestBox.getChildren().add(nextBtn);
+                this.addSuggestionButton(suggestion);
             }
+
             focusTokenInTable(cleanLast);
         } else {
             // User is currently typing a word: show prefix auto-complete matches
