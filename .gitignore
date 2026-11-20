@@ -9,6 +9,7 @@ sentence-builder/.idea/
 sentence-builder/*.iws
 sentence-builder/*.iml
 sentence-builder/*.ipr
+.idea/
 
 ### VS Code ###
 .vscode/
