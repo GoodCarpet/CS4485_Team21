@@ -27,11 +27,9 @@ import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 public class SentenceBuilderController {
 
@@ -75,8 +73,6 @@ public class SentenceBuilderController {
     private HBox autoSuggestBox;
 
     // Aniq Sunesara
-    // prompt: Add a tab onto the GUI that will display all the generated sentences and related data
-    // make it so that when a certain entry is selected, duplicate sentences that have the same hash are also highlighted
     // Generated Sentences tab, displaying persisted Generated_Sentence rows.
     @FXML private Tab generatedSentencesTab;
     @FXML private TableView<GeneratedSentence> generatedSentencesTableView;
@@ -92,7 +88,7 @@ public class SentenceBuilderController {
     @FXML private Label generatedSentenceCountLabel;
     @FXML private Label matchingSentenceHashLabel;
 
-    public SentenceBuilderController(AppContext appContext){
+    public SentenceBuilderController(AppContext appContext) {
         this.appContext = appContext;
     }
 
@@ -109,6 +105,8 @@ public class SentenceBuilderController {
     private final FileChooser fileChooser = new FileChooser();
     private final ObservableList<Token> tokens = FXCollections.observableArrayList();
 
+    // Tracks the last processed word index to avoid incrementing transition counts multiple times for the same word
+    private int lastRecordedWordCount = 0;
 
     public void setStage(Stage stage) {
         this.stage = stage;
@@ -153,9 +151,6 @@ public class SentenceBuilderController {
         generatedSentencesTableView.setItems(generatedSentences);
         generatedSentencesTableView.setPlaceholder(
                 new Label("No generated sentences saved yet."));
-        // Every visible row with the selected sentence's SHA-256 is highlighted,
-        // including the selected row. TableRow virtualization is handled by
-        // updateItem(): recycled rows always re-evaluate their current item.
         generatedSentencesTableView.setRowFactory(table -> new TableRow<>() {
             @Override
             protected void updateItem(GeneratedSentence sentence, boolean empty) {
@@ -172,12 +167,9 @@ public class SentenceBuilderController {
                 .addListener((obs, previous, selected) -> {
                     showGeneratedSentenceDetails(selected);
                     updateMatchingSentenceHashLabel(selected);
-                    // Refresh updates visible/recycled row pseudo-classes when selection changes.
                     generatedSentencesTableView.refresh();
                 });
 
-        // Read from the database when the tab becomes visible, so sentences
-        // inserted by other team members will appear on the next visit.
         generatedSentencesTab.setOnSelectionChanged(event -> {
             if (generatedSentencesTab.isSelected() && appContext != null) {
                 refreshGeneratedSentences();
@@ -225,7 +217,7 @@ public class SentenceBuilderController {
 
         MarkovGenerator generator = appContext.getMarkovGenerator();
         List<String> suggestions = generator.getTopNextWords(null, 3);
-        for(String suggestion : suggestions){
+        for (String suggestion : suggestions) {
             this.addSuggestionButton(suggestion);
         }
     }
@@ -259,7 +251,6 @@ public class SentenceBuilderController {
         Token selectedToken = tokenTableView.getSelectionModel().getSelectedItem();
 
         MarkovGenerator.Algorithm algorithm = algorithmComboBox.getValue();
-
         if (algorithm == null) {
             algorithm = MarkovGenerator.Algorithm.WEIGHTED_MARKOV;
         }
@@ -272,10 +263,9 @@ public class SentenceBuilderController {
             sentence = appContext.getMarkovGenerator().generateSentence(algorithm, 20);
         }
         generatedTextField.setText(sentence);
-        // Aniq Sunesara
-        // add the sentence into generated sentences table and update values of tokens
+        lastRecordedWordCount = sentence.trim().split("\\s+").length;
+
         appContext.getSbService().addGeneratedSentence(sentence, algorithm.getDisplayName());
-        // Keep the saved-sentences tab up to date after a successful generation.
         refreshGeneratedSentences();
 
         // Focus the TableView on the last word of the generated sentence
@@ -284,19 +274,32 @@ public class SentenceBuilderController {
     }
 
     private void addSuggestionButton(String suggestion) {
-        String rawText = generatedTextField.getText();
+        String rawText = generatedTextField.getText() == null ? "" : generatedTextField.getText();
 
         Button nextBtn = new Button(suggestion);
 
         nextBtn.setOnAction(e -> {
-            generatedTextField.setText(rawText + suggestion + " ");
-            generatedTextField.positionCaret(generatedTextField.getText().length());
+            String baseText = rawText.endsWith(" ") || rawText.isEmpty() ? rawText : rawText + " ";
+            String[] prevWords = baseText.trim().isEmpty() ? new String[0] : baseText.trim().split("\\s+");
+            String prevWord = prevWords.length > 0
+                    ? prevWords[prevWords.length - 1].replaceAll("[^a-zA-Z0-9'-]", "")
+                    : null;
+
+            // Increment user selection count in memory and DB when user selects a suggested word
+            if (prevWord != null && !prevWord.isEmpty()) {
+                appContext.getMarkovGenerator().addCustomWordWithTransitions(prevWord, suggestion, null, true);
+            }
+
+            String updatedText = baseText + suggestion + " ";
+            generatedTextField.setText(updatedText);
+            generatedTextField.positionCaret(updatedText.length());
+            lastRecordedWordCount = updatedText.trim().split("\\s+").length;
+
             focusTokenInTable(suggestion);
             handleAutoSuggest();
         });
 
         autoSuggestBox.getChildren().add(nextBtn);
-
     }
 
     @FXML
@@ -305,66 +308,63 @@ public class SentenceBuilderController {
 
         String rawText = generatedTextField.getText();
         if (rawText == null || rawText.trim().isEmpty()) {
+            lastRecordedWordCount = 0;
             return;
         }
 
-        boolean endsWithSpace = rawText.endsWith(" ");
+        // Requirement: Do NOT predict words while mid-typing.
+        // Only trigger next-word suggestions when encountering a space (' '), period ('.'), or comma (',').
+        char lastChar = rawText.charAt(rawText.length() - 1);
+        boolean isWordBoundary = (lastChar == ' ' || lastChar == '.' || lastChar == ',');
+
+        if (!isWordBoundary) {
+            return;
+        }
+
         String[] words = rawText.trim().split("\\s+");
         if (words.length == 0) {
             return;
         }
 
-        String lastWord = words[words.length - 1];
+        if (words.length < lastRecordedWordCount) {
+            lastRecordedWordCount = words.length;
+        }
+
         MarkovGenerator generator = appContext.getMarkovGenerator();
+        String completedToken = words[words.length - 1];
+        String cleanCompleted = completedToken.replaceAll("[^a-zA-Z0-9'-]", "");
+        String prevWord = (words.length >= 2)
+                ? words[words.length - 2].replaceAll("[^a-zA-Z0-9'-]", "")
+                : null;
 
-        if (endsWithSpace) {
-            // 1. If user just typed a space, check if the completed word is unknown (e.g., "crossbow")
-            String cleanLast = lastWord.replaceAll("[^a-zA-Z0-9'-]", "");
-
-            if (!cleanLast.isEmpty() && !generator.containsWord(cleanLast)) {
-                Button addWordBtn = new Button("+ Add '" + cleanLast + "'");
-                addWordBtn.setOnAction(e -> promptAndAddUnknownWords(rawText.trim()));
-                autoSuggestBox.getChildren().add(addWordBtn);
+        // 1. If the completed word is NOT in the database, offer to add it
+        if (!cleanCompleted.isEmpty() && !generator.containsWord(cleanCompleted)) {
+            Button addWordBtn = new Button("+ Add '" + cleanCompleted + "'");
+            addWordBtn.setOnAction(e -> promptAndAddUnknownWords(rawText.trim()));
+            autoSuggestBox.getChildren().add(addWordBtn);
+        } else if (!cleanCompleted.isEmpty() && words.length > lastRecordedWordCount) {
+            // 2. Requirement: If the typed word IS already in the database,
+            // increment the count of how often it follows the previous word
+            if (prevWord != null && !prevWord.isEmpty()) {
+                generator.addCustomWordWithTransitions(prevWord, cleanCompleted, null, true);
             }
+            lastRecordedWordCount = words.length;
+        }
 
-            // 2. Suggest top next words based on Markov transitions from the completed word
-            List<String> nextSuggestions = generator.getTopNextWords(cleanLast, 5);
+        // 3. Determine lookup key: if ending with ',' or '.', predict from the punctuation token if tracked,
+        // otherwise predict from the completed word
+        String lookupKey = (lastChar == '.' || lastChar == ',') ? String.valueOf(lastChar) : cleanCompleted;
+        List<String> nextSuggestions = generator.getTopNextWords(lookupKey, 5);
+        if (nextSuggestions.isEmpty() && (lastChar == '.' || lastChar == ',')) {
+            nextSuggestions = generator.getTopNextWords(cleanCompleted, 5);
+        }
 
-            for (String suggestion : nextSuggestions) {
-                this.addSuggestionButton(suggestion);
-            }
+        for (String suggestion : nextSuggestions) {
+            this.addSuggestionButton(suggestion);
+        }
 
-            focusTokenInTable(cleanLast);
-        } else {
-            // User is currently typing a word: show prefix auto-complete matches
-            Set<String> suggestions = new LinkedHashSet<>();
-            List<Token> nextTokens = appContext.getSbService().searchTokens(lastWord, 3);
-            for (Token nextToken : nextTokens) {
-                if (nextToken.getToken_text() != null) {
-                    suggestions.add(nextToken.getToken_text());
-                }
-            }
-
-            for (String tokenText : suggestions) {
-                Button nextWordButton = new Button(tokenText);
-                autoSuggestBox.getChildren().add(nextWordButton);
-
-                nextWordButton.setOnAction(event -> {
-                    words[words.length - 1] = tokenText;
-                    generatedTextField.setText(String.join(" ", words) + " ");
-                    generatedTextField.positionCaret(generatedTextField.getText().length());
-                    focusTokenInTable(tokenText);
-                    handleAutoSuggest();
-                });
-            }
-
-            // If no prefix matches exist for the typed word, offer a button to add it as a new word
-            String cleanTyped = lastWord.replaceAll("[^a-zA-Z0-9'-]", "");
-            if (suggestions.isEmpty() && !cleanTyped.isEmpty() && !generator.containsWord(cleanTyped)) {
-                Button addCustomButton = new Button("+ Add '" + cleanTyped + "'");
-                addCustomButton.setOnAction(event -> promptAndAddUnknownWords(rawText.trim()));
-                autoSuggestBox.getChildren().add(addCustomButton);
-            }
+        if (!cleanCompleted.isEmpty()) {
+            focusTokenInTable(cleanCompleted);
         }
     }
 
@@ -409,6 +409,7 @@ public class SentenceBuilderController {
 
         if (addedAny) {
             refreshTokens();
+            lastRecordedWordCount = rawTokens.length;
             String lastWord = generator.extractLastWord(sentence);
             focusTokenInTable(lastWord);
         }
