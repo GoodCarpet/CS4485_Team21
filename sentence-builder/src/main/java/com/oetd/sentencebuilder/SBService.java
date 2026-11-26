@@ -445,6 +445,17 @@ public class SBService {
                 ).getResultList());
     }
 
+    // James Parker - 11/25/2026
+    // Returns all imported file records ordered newest first for the Imported Files tab.
+    // AI-assisted (Gemini) - Prompt: "Can you give me the code for the imported file history tab? Both for fxml and java please."
+    public List<ImportedFile> getImportedFiles() {
+        return sessionFactory.fromTransaction(session ->
+                session.createQuery(
+                        "select f from ImportedFile f order by f.importedAt desc, f.fileId desc",
+                        ImportedFile.class
+                ).getResultList());
+    }
+
     public List<Token> getTokens() {
         return sessionFactory.fromTransaction(session ->
                 session.createQuery("from Token", Token.class).getResultList());

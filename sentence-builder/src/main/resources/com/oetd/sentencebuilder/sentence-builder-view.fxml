@@ -28,13 +28,11 @@
                             <HBox spacing="10.0" alignment="CENTER_LEFT">
                                 <Label text="Algorithm:" />
                                 <ComboBox fx:id="algorithmComboBox" />
-                                <Button fx:id="importButton" text="Select File to Import" onAction="#handleImport"/>
                                 <Button fx:id="refreshButton" text="Refresh" onAction="#handleRefresh"/>
                                 <Button fx:id="generateButton" text="Generate" onAction="#handleGenerate"/>
                             </HBox>
-                            <TextField fx:id="generatedTextField" promptText="Generated sentence..."
-                                       onKeyTyped="#handleAutoSuggest"/>
-                            <HBox fx:id="autoSuggestBox" spacing="10.0" alignment="CENTER_LEFT" />
+                            <Label text="Select an algorithm and click Generate, or click a word in the table first to start with it. Double-click any row to view the words that follow it." />
+                            <TextField fx:id="generatedTextField" promptText="Generated sentence..."/>
                             <TableView fx:id="tokenTableView" VBox.vgrow="ALWAYS">
                                 <columns>
                                     <TableColumn fx:id="idColumn" text="id" prefWidth="50"/>
@@ -45,6 +43,41 @@
                                     <TableColumn fx:id="createdAtColumn" text="createdAt" prefWidth="165"/>
                                 </columns>
                             </TableView>
+                        </VBox>
+                    </content>
+                </Tab>
+                <!-- James Parker - 11/25/2026: Batch Generator tab for generating random-start sentences and adding them to the corpus (AI-assisted via Gemini) -->
+                <Tab text="Batch Generator">
+                    <content>
+                        <VBox spacing="10.0">
+                            <padding>
+                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0"/>
+                            </padding>
+                            <HBox spacing="10.0" alignment="CENTER_LEFT">
+                                <Label text="Algorithm:" />
+                                <ComboBox fx:id="batchAlgorithmComboBox" />
+                                <Label text="Count:" />
+                                <TextField fx:id="batchCountField" text="10" prefWidth="60" />
+                                <Button text="Generate Batch" onAction="#handleBatchGenerate" />
+                                <Button fx:id="addBatchButton" text="Add to Database"
+                                        onAction="#handleAddBatchToDatabase" disable="true" />
+                            </HBox>
+                            <Label text="Choose an algorithm and count, click Generate Batch, then click Add to Database." />
+                            <TextArea fx:id="batchOutputArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS" />
+                        </VBox>
+                    </content>
+                </Tab>
+                <!-- James Parker - 11/25/2026: Dedicated Auto-Complete tab separated from the main generator tab (AI-assisted via Gemini) -->
+                <Tab text="Auto-Complete">
+                    <content>
+                        <VBox spacing="10.0">
+                            <padding>
+                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0"/>
+                            </padding>
+                            <Label text="Type below. Suggestions update after a space, comma, or period." />
+                            <TextArea fx:id="autoCompleteTextArea" wrapText="true"
+                                      onKeyReleased="#handleAutoSuggest" />
+                            <HBox fx:id="autoSuggestBox" spacing="10.0" alignment="CENTER_LEFT" />
                         </VBox>
                     </content>
                 </Tab>
@@ -76,6 +109,31 @@
                             <Label text="Selected sentence details (select any row):" />
                             <TextArea fx:id="generatedSentenceDetails" editable="false"
                                       wrapText="true" prefRowCount="6" />
+                        </VBox>
+                    </content>
+                </Tab>
+                <!-- James Parker - 11/25/2026: Imported Files history tab displaying past imports and file metadata (AI-assisted via Gemini) -->
+                <Tab fx:id="importedFilesTab" text="Imported Files">
+                    <content>
+                        <VBox spacing="10.0">
+                            <padding>
+                                <Insets bottom="10.0" left="10.0" right="10.0" top="10.0"/>
+                            </padding>
+                            <HBox spacing="12.0" alignment="CENTER_LEFT">
+                                <Label text="Imported file history" style="-fx-font-weight: bold;"/>
+                                <Label fx:id="importedFileCountLabel" text="0 imported files"/>
+                                <Button fx:id="importButton" text="Select File to Import" onAction="#handleImport"/>
+                                <Button text="Refresh" onAction="#handleRefreshImportedFiles"/>
+                            </HBox>
+                            <TableView fx:id="importedFilesTableView" VBox.vgrow="ALWAYS">
+                                <columns>
+                                    <TableColumn fx:id="fileIdColumn" text="ID" prefWidth="60"/>
+                                    <TableColumn fx:id="fileNameColumn" text="File Name" prefWidth="260"/>
+                                    <TableColumn fx:id="fileTokenCountColumn" text="Token Count" prefWidth="110"/>
+                                    <TableColumn fx:id="fileImportedAtColumn" text="Imported At" prefWidth="170"/>
+                                    <TableColumn fx:id="fileHashColumn" text="SHA-256" prefWidth="250"/>
+                                </columns>
+                            </TableView>
                         </VBox>
                     </content>
                 </Tab>
