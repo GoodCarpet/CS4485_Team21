@@ -431,7 +431,9 @@ public class SentenceBuilderController {
 
         autoSuggestBox.getChildren().add(nextBtn);
     }
-
+    // Minchan Kwon - 11/23/2026
+// Triggers next-word suggestions only on word boundaries (space, period, comma), increments existing transition counts, and offers adding unknown words.
+// AI-assisted (Gemini) - Prompt: "Update handleAutoSuggest to trigger only on space, period, or comma, increment counts for existing words, and prompt to add unknown words."
     @FXML
     private void handleAutoSuggest() {
         autoSuggestBox.getChildren().clear();
@@ -467,7 +469,6 @@ public class SentenceBuilderController {
                 ? words[words.length - 2].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT)
                 : null;
 
-        // 1. If the completed word is NOT in the database, offer to add it
         if (!cleanCompleted.isEmpty() && !generator.containsWord(cleanCompleted)) {
             Button addWordBtn = new Button("+ Add '" + cleanCompleted + "'");
             addWordBtn.setOnAction(e -> promptAndAddUnknownWords(rawText.trim()));
@@ -492,7 +493,6 @@ public class SentenceBuilderController {
         for (String suggestion : nextSuggestions) {
             this.addSuggestionButton(suggestion);
         }
-
         if (!cleanCompleted.isEmpty()) {
             focusTokenInTable(cleanCompleted);
         }
@@ -502,6 +502,9 @@ public class SentenceBuilderController {
      * Checks the sentence for any words not currently in the vocabulary (e.g., "crossbow"),
      * asks the user if they want to add them with frequency 1, and updates bidirectional transitions.
      */
+// Minchan Kwon - 11/21/2026
+// Detects unknown words in user input and opens a confirmation dialog to add them with bidirectional transitions.
+// AI-assisted (Gemini) - Prompt: "Create a JavaFX confirmation dialog to add unknown words with initial frequency 1 and update bidirectional transitions."
     private void promptAndAddUnknownWords(String sentence) {
         String[] rawTokens = sentence.trim().split("\\s+");
         MarkovGenerator generator = appContext.getMarkovGenerator();
@@ -548,6 +551,10 @@ public class SentenceBuilderController {
     /**
      * Searches the TableView for the target word and scrolls/focuses on that row.
      */
+
+// Minchan Kwon - 11/21/2026
+// Searches the token TableView for the last word and scrolls/focuses on that row.
+// AI-assisted (Gemini) - Prompt: "Write a method to find a token in JavaFX TableView by text and auto-scroll/focus on it."
     private void focusTokenInTable(String targetWord) {
         if (targetWord == null || targetWord.trim().isEmpty() || tokens.isEmpty()) {
             return;
@@ -568,6 +575,9 @@ public class SentenceBuilderController {
     /**
      * Displays a popup listing all following words and their transition frequencies for a selected token.
      */
+    // Minchan Kwon - 11/21/2026
+// Opens an alert popup showing all following words and transition frequencies when a token row is double-clicked.
+// AI-assisted (Gemini) - Prompt: "Show a JavaFX popup listing all following words and their frequencies when double-clicking a TableView row."
     private void showFollowingWordsPopup(String word) {
         Map<String, Integer> following = appContext.getMarkovGenerator().getFollowingWordsWithCounts(word);
 

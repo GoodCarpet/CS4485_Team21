@@ -10,7 +10,10 @@ import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-
+// Minchan Kwon - 11/12/2026
+// Core Markov Chain sentence generation engine supporting 4 algorithms, Hibernate DB loading,
+// bidirectional unknown-word learning, and auto-complete helpers.
+// AI-assisted (Gemini) - Prompt: "Implement a MarkovGenerator class in Java using Hibernate ORM with 4 generation algorithms, DB loading, and punctuation handling."
 public class MarkovGenerator {
 
     // 3+ Generation Algorithms for UI Dropdown Selection
@@ -73,6 +76,9 @@ public class MarkovGenerator {
     /**
      * Loads all tokens and transitions from the database using Hibernate ORM.
      */
+    // Minchan Kwon - 11/12/2026
+// Loads all Token and TokenTransition records from MySQL via Hibernate into in-memory maps.
+// AI-assisted (Gemini) - Prompt: "Load tokens and transitions from MySQL via Hibernate into HashMaps and filter out punctuation from start words."
     public void loadTransitionsFromDB() {
         if (sessionFactory == null) {
             System.err.println("SessionFactory is not initialized in MarkovGenerator.");
@@ -156,6 +162,9 @@ public class MarkovGenerator {
      * Adds a new or custom word (e.g., "crossbow") with an initial frequency of 1
      * and updates bidirectional transitions (prevWord -> newWord and newWord -> nextWord) in memory.
      */
+    // Minchan Kwon - 11/21/2026
+// Adds an unknown word with frequency 1, updates bidirectional transitions (prev -> word -> next) in memory, and persists to MySQL via upsert.
+// AI-assisted (Gemini) - Prompt: "Add a method to insert unknown words with frequency 1 and update bidirectional transitions in memory and MySQL."
     public void addCustomWordWithTransitions(String prevWord, String newWord, String nextWord) {
         addCustomWordWithTransitions(prevWord, newWord, nextWord, false);
     }
@@ -204,6 +213,9 @@ public class MarkovGenerator {
     /**
      * Persists a custom word and its bidirectional transitions to the database using Hibernate.
      */
+    // Minchan Kwon - 11/21/2026
+// Adds an unknown word with frequency 1, updates bidirectional transitions (prev -> word -> next) in memory, and persists to MySQL via upsert.
+// AI-assisted (Gemini) - Prompt: "Add a method to insert unknown words with frequency 1 and update bidirectional transitions in memory and MySQL."
     private void persistCustomWordAndTransitionsToDB(String prevWord, String newWord, String nextWord) {
         Transaction tx = null;
         try (Session session = sessionFactory.openSession()) {
@@ -282,6 +294,9 @@ public class MarkovGenerator {
     /**
      * Helper for UI Auto-Complete: Returns top N suggested next words sorted by frequency.
      */
+    // Minchan Kwon - 11/21/2026
+// Helper methods for UI auto-complete suggestions, following-word frequency popups, and table auto-focus.
+// AI-assisted (Gemini) - Prompt: "Add helper methods to get top next words, following-word frequency maps, and extract the last word of a sentence."
     public List<String> getTopNextWords(String currentWord, int limit) {
         if (currentWord == null) {
             return startWordsMap.entrySet().stream()
@@ -305,6 +320,9 @@ public class MarkovGenerator {
      * Helper for UI Token Selection Popup:
      * Returns all following words and their frequencies for a selected word, sorted by frequency descending.
      */
+    // Minchan Kwon - 11/21/2026
+// Helper methods for UI auto-complete suggestions, following-word frequency popups, and table auto-focus.
+// AI-assisted (Gemini) - Prompt: "Add helper methods to get top next words, following-word frequency maps, and extract the last word of a sentence."
     public Map<String, Integer> getFollowingWordsWithCounts(String currentWord) {
         if (currentWord == null || currentWord.trim().isEmpty()) {
             return Collections.emptyMap();
@@ -328,6 +346,9 @@ public class MarkovGenerator {
      * Extracts the last word token from a generated or typed sentence (stripping trailing punctuation)
      * so the UI TableView can search and focus on it.
      */
+    // Minchan Kwon - 11/21/2026
+// Helper methods for UI auto-complete suggestions, following-word frequency popups, and table auto-focus.
+// AI-assisted (Gemini) - Prompt: "Add helper methods to get top next words, following-word frequency maps, and extract the last word of a sentence."
     public String extractLastWord(String sentence) {
         if (sentence == null || sentence.trim().isEmpty()) {
             return "";
@@ -345,6 +366,7 @@ public class MarkovGenerator {
     /**
      * Default sentence generation (Weighted Markov Chain).
      */
+
     public String generateSentence(int maxLength) {
         return generateSentence(Algorithm.WEIGHTED_MARKOV, maxLength);
     }
@@ -356,6 +378,7 @@ public class MarkovGenerator {
         if (transitionMap.isEmpty() && allWordsMap.isEmpty()) {
             return "No data available to generate a sentence.";
         }
+
         String startWord = pickStartWord(algorithm);
         if (startWord == null) {
             return "No valid starting words found in DB.";
@@ -394,7 +417,9 @@ public class MarkovGenerator {
 
         StringBuilder sentence = new StringBuilder(startWord);
         String currentWord = startWord;
-
+// Minchan Kwon - 11/12/2026
+// Generates sentences using Weighted Markov, Greedy, Random Walk, or Pure Random algorithms without starting on punctuation.
+// AI-assisted (Gemini) - Prompt: "Implement 4 sentence generation algorithms (Weighted, Greedy, Random Walk, Pure Random) with clean punctuation spacing."
         for (int i = 0; i < maxLength - 1; i++) {
             String nextWord = pickNextWord(currentWord, algorithm);
             if (nextWord == null) {
@@ -422,6 +447,9 @@ public class MarkovGenerator {
     /**
      * Picks a valid starting word (never punctuation).
      */
+    // Minchan Kwon - 11/12/2026
+// Generates sentences using Weighted Markov, Greedy, Random Walk, or Pure Random algorithms without starting on punctuation.
+// AI-assisted (Gemini) - Prompt: "Implement 4 sentence generation algorithms (Weighted, Greedy, Random Walk, Pure Random) with clean punctuation spacing."
     private String pickStartWord(Algorithm algorithm) {
         // 1. Prefer words with start_count > 0 that also have outgoing transitions
         Map<String, Integer> validStarts = new HashMap<>();
@@ -467,6 +495,9 @@ public class MarkovGenerator {
     /**
      * Picks the next word according to the chosen Algorithm.
      */
+    // Minchan Kwon - 11/12/2026
+// Generates sentences using Weighted Markov, Greedy, Random Walk, or Pure Random algorithms without starting on punctuation.
+// AI-assisted (Gemini) - Prompt: "Implement 4 sentence generation algorithms (Weighted, Greedy, Random Walk, Pure Random) with clean punctuation spacing."
     private String pickNextWord(String currentWord, Algorithm algorithm) {
         if (algorithm == Algorithm.PURE_RANDOM_WORDS) {
             if (allWordsMap.isEmpty()) return null;
