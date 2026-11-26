@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Locale;
 
 public class SentenceBuilderController {
 
@@ -72,6 +73,12 @@ public class SentenceBuilderController {
     @FXML
     private HBox autoSuggestBox;
 
+    // James Parker - 11/25/2026
+    // Updated auto-complete handlers to use the dedicated autoCompleteTextArea and normalize input to lowercase so capitalized words match the database.
+    // AI-assisted (Gemini) - Prompt: "Can you elaborate on what to do for the capitalization bug?"
+    @FXML
+    private TextArea autoCompleteTextArea;
+
     // Aniq Sunesara
     // Generated Sentences tab, displaying persisted Generated_Sentence rows.
     @FXML private Tab generatedSentencesTab;
@@ -87,6 +94,29 @@ public class SentenceBuilderController {
     @FXML private TextArea generatedSentenceDetails;
     @FXML private Label generatedSentenceCountLabel;
     @FXML private Label matchingSentenceHashLabel;
+
+    // James Parker
+    // Imported Files tab, displaying file upload history.
+    @FXML private Tab importedFilesTab;
+    @FXML private TableView<ImportedFile> importedFilesTableView;
+    @FXML private TableColumn<ImportedFile, Long> fileIdColumn;
+    @FXML private TableColumn<ImportedFile, String> fileNameColumn;
+    @FXML private TableColumn<ImportedFile, Long> fileTokenCountColumn;
+    @FXML private TableColumn<ImportedFile, String> fileImportedAtColumn;
+    @FXML private TableColumn<ImportedFile, String> fileHashColumn;
+    @FXML private Label importedFileCountLabel;
+
+    private final ObservableList<ImportedFile> importedFiles = FXCollections.observableArrayList();
+
+    // James Parker
+    // Batch Generator tab controls and pending sentences list
+    @FXML private ComboBox<MarkovGenerator.Algorithm> batchAlgorithmComboBox;
+    @FXML private TextField batchCountField;
+    @FXML private Button addBatchButton;
+    @FXML private TextArea batchOutputArea;
+
+    private final java.util.List<String> pendingBatchSentences = new java.util.ArrayList<>();
+    private MarkovGenerator.Algorithm lastBatchAlgorithm = MarkovGenerator.Algorithm.WEIGHTED_MARKOV;
 
     public SentenceBuilderController(AppContext appContext) {
         this.appContext = appContext;
@@ -176,6 +206,28 @@ public class SentenceBuilderController {
             }
         });
 
+        fileIdColumn.setCellValueFactory(cell ->
+                new ReadOnlyObjectWrapper<>(cell.getValue().getFileId()));
+        fileNameColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(cell.getValue().getFileName()));
+        fileTokenCountColumn.setCellValueFactory(cell ->
+                new ReadOnlyObjectWrapper<>(cell.getValue().getTokenCount()));
+        fileImportedAtColumn.setCellValueFactory(cell -> {
+            LocalDateTime timestamp = cell.getValue().getImportedAt();
+            return new ReadOnlyStringWrapper(timestamp == null ? "" : DATE_FORMAT.format(timestamp));
+        });
+        fileHashColumn.setCellValueFactory(cell ->
+                new ReadOnlyStringWrapper(cell.getValue().getFileHash()));
+
+        importedFilesTableView.setItems(importedFiles);
+        importedFilesTableView.setPlaceholder(new Label("No files imported yet."));
+
+        importedFilesTab.setOnSelectionChanged(event -> {
+            if (importedFilesTab.isSelected() && appContext != null) {
+                refreshImportedFiles();
+            }
+        });
+
         algorithmComboBox.setItems(FXCollections.observableArrayList(MarkovGenerator.Algorithm.values()));
         algorithmComboBox.setValue(MarkovGenerator.Algorithm.WEIGHTED_MARKOV);
         algorithmComboBox.setConverter(new StringConverter<MarkovGenerator.Algorithm>() {
@@ -189,6 +241,9 @@ public class SentenceBuilderController {
                 return null;
             }
         });
+
+        batchAlgorithmComboBox.setItems(FXCollections.observableArrayList(MarkovGenerator.Algorithm.values()));
+        batchAlgorithmComboBox.setValue(MarkovGenerator.Algorithm.WEIGHTED_MARKOV);
 
         // Double-click a row in the table to view following words and their frequencies in a popup
         tokenTableView.setRowFactory(tv -> {
@@ -220,6 +275,8 @@ public class SentenceBuilderController {
         for (String suggestion : suggestions) {
             this.addSuggestionButton(suggestion);
         }
+
+        refreshTokens();
     }
 
     @FXML
@@ -229,6 +286,7 @@ public class SentenceBuilderController {
             try {
                 appContext.getSbService().addFile(selectedFile);
                 refreshTokens();
+                refreshImportedFiles();
                 appContext.getMarkovGenerator().loadTransitionsFromDB();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -240,6 +298,22 @@ public class SentenceBuilderController {
     private void handleRefresh() {
         refreshTokens();
         appContext.getMarkovGenerator().loadTransitionsFromDB();
+    }
+
+    @FXML
+    private void handleRefreshImportedFiles() {
+        refreshImportedFiles();
+    }
+
+    // James Parker - 11/25/2026
+    // Refreshes the Imported Files table and updates the file count label.
+    // AI-assisted (Gemini) - Prompt: "Can you give me the code for the imported file history tab? Both for fxml and java please."
+    private void refreshImportedFiles() {
+        if (appContext == null) {
+            return;
+        }
+        importedFiles.setAll(appContext.getSbService().getImportedFiles());
+        importedFileCountLabel.setText(importedFiles.size() + " imported files");
     }
 
     @FXML
@@ -273,8 +347,64 @@ public class SentenceBuilderController {
         focusTokenInTable(lastWord);
     }
 
+    @FXML
+    private void handleBatchGenerate() {
+        int count;
+        try {
+            count = Integer.parseInt(batchCountField.getText().trim());
+            if (count <= 0) {
+                return;
+            }
+        } catch (NumberFormatException e) {
+            return;
+        }
+
+        MarkovGenerator.Algorithm algorithm = batchAlgorithmComboBox.getValue();
+        if (algorithm == null) {
+            algorithm = MarkovGenerator.Algorithm.WEIGHTED_MARKOV;
+        }
+        lastBatchAlgorithm = algorithm;
+
+        pendingBatchSentences.clear();
+        StringBuilder display = new StringBuilder();
+
+        for (int i = 0; i < count; i++) {
+            // Uses random starting words
+            String sentence = appContext.getMarkovGenerator().generateSentence(algorithm, 20);
+            pendingBatchSentences.add(sentence);
+            display.append(sentence).append("\n");
+        }
+
+        batchOutputArea.setText(display.toString());
+        addBatchButton.setDisable(false);
+    }
+
+    // James Parker - 11/25/2026
+    // Saves the pending batch of generated sentences to the database and reloads token counts and Markov transitions.
+    // AI-assisted (Gemini) - Prompt: "Batch generation is next, and that must have random starting words. Should that be its own new tab?"
+    @FXML
+    private void handleAddBatchToDatabase() {
+        if (pendingBatchSentences.isEmpty()) {
+            return;
+        }
+
+        int addedCount = 0;
+        for (String sentence : pendingBatchSentences) {
+            appContext.getSbService().addGeneratedSentence(sentence, lastBatchAlgorithm.getDisplayName());
+            addedCount++;
+        }
+
+        pendingBatchSentences.clear();
+        addBatchButton.setDisable(true);
+
+        // Refresh UI tables and in-memory Markov transitions
+        refreshTokens();
+        refreshGeneratedSentences();
+        appContext.getMarkovGenerator().loadTransitionsFromDB();
+    }
+
     private void addSuggestionButton(String suggestion) {
-        String rawText = generatedTextField.getText() == null ? "" : generatedTextField.getText();
+        String rawText = autoCompleteTextArea.getText() == null ? "" : autoCompleteTextArea.getText();
 
         Button nextBtn = new Button(suggestion);
 
@@ -282,7 +412,7 @@ public class SentenceBuilderController {
             String baseText = rawText.endsWith(" ") || rawText.isEmpty() ? rawText : rawText + " ";
             String[] prevWords = baseText.trim().isEmpty() ? new String[0] : baseText.trim().split("\\s+");
             String prevWord = prevWords.length > 0
-                    ? prevWords[prevWords.length - 1].replaceAll("[^a-zA-Z0-9'-]", "")
+                    ? prevWords[prevWords.length - 1].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT)
                     : null;
 
             // Increment user selection count in memory and DB when user selects a suggested word
@@ -291,8 +421,8 @@ public class SentenceBuilderController {
             }
 
             String updatedText = baseText + suggestion + " ";
-            generatedTextField.setText(updatedText);
-            generatedTextField.positionCaret(updatedText.length());
+            autoCompleteTextArea.setText(updatedText);
+            autoCompleteTextArea.positionCaret(updatedText.length());
             lastRecordedWordCount = updatedText.trim().split("\\s+").length;
 
             focusTokenInTable(suggestion);
@@ -306,7 +436,7 @@ public class SentenceBuilderController {
     private void handleAutoSuggest() {
         autoSuggestBox.getChildren().clear();
 
-        String rawText = generatedTextField.getText();
+        String rawText = autoCompleteTextArea.getText();
         if (rawText == null || rawText.trim().isEmpty()) {
             lastRecordedWordCount = 0;
             return;
@@ -332,9 +462,9 @@ public class SentenceBuilderController {
 
         MarkovGenerator generator = appContext.getMarkovGenerator();
         String completedToken = words[words.length - 1];
-        String cleanCompleted = completedToken.replaceAll("[^a-zA-Z0-9'-]", "");
+        String cleanCompleted = completedToken.replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT);
         String prevWord = (words.length >= 2)
-                ? words[words.length - 2].replaceAll("[^a-zA-Z0-9'-]", "")
+                ? words[words.length - 2].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT)
                 : null;
 
         // 1. If the completed word is NOT in the database, offer to add it
@@ -378,14 +508,14 @@ public class SentenceBuilderController {
         boolean addedAny = false;
 
         for (int i = 0; i < rawTokens.length; i++) {
-            String cleanWord = rawTokens[i].replaceAll("[^a-zA-Z0-9'-]", "");
+            String cleanWord = rawTokens[i].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT);
             if (cleanWord.isEmpty()) {
                 continue;
             }
 
             if (!generator.containsWord(cleanWord)) {
-                String prevWord = (i > 0) ? rawTokens[i - 1].replaceAll("[^a-zA-Z0-9'-]", "") : null;
-                String nextWord = (i < rawTokens.length - 1) ? rawTokens[i + 1].replaceAll("[^a-zA-Z0-9'-]", "") : null;
+                String prevWord = (i > 0) ? rawTokens[i - 1].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT) : null;
+                String nextWord = (i < rawTokens.length - 1) ? rawTokens[i + 1].replaceAll("[^a-zA-Z0-9'-]", "").toLowerCase(Locale.ROOT) : null;
 
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("New Word Detected");
