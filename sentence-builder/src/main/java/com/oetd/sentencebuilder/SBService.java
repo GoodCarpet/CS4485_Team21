@@ -18,18 +18,24 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Aniq Sunesara
-// Prompt: "in sbservice, create an updated addfile function that will split the words, normalize them,
-// and separate punctuations into their own tokens. Then update the Token table, Token_Transition table, and the Imported_File Table accordingly."
 
-// Aniq Sunesara
-// Prompt: "in SBService, add a function that takes a string of a sentence and string of a generation method as input.
-// The function will then parse the sentence, update the counts of the tokens used, and adds the generated sentence and
-// all its properties into the database via the GeneratedSentence ORM"
 /** Import normalized words and standalone punctuation into the shared MySQL schema. */
 public class SBService {
     // Keeps prepared statements small when importing an entire novel.
     private static final int SQL_BATCH_SIZE = 250;
+
+
+    private final SessionFactory sessionFactory;
+
+    public SBService(SessionFactory sf) {
+        this.sessionFactory = sf;
+    }
+
+    // Aniq Sunesara 10/30/26
+    // Prompt: "in sbservice, create an updated addfile function that will split the words, normalize them,
+    // and separate punctuations into their own tokens. Then update the Token table, Token_Transition table, and the Imported_File Table accordingly."
+    //
+    // added upsertTokens and upsertTransitions as well
 
     // A sequence of letters/marks/numbers, or one punctuation/symbol character.
     private static final Pattern TOKEN_PATTERN = Pattern.compile(
@@ -38,13 +44,6 @@ public class SBService {
     private static final Pattern WORD_TOKEN_PATTERN = Pattern.compile(
             "[\\p{L}\\p{M}\\p{N}]+"
     );
-
-    private final SessionFactory sessionFactory;
-
-    public SBService(SessionFactory sf) {
-        this.sessionFactory = sf;
-    }
-
     public void addFile(File file) throws IOException {
         if (file == null || !file.isFile()) {
             throw new IOException("Please select an existing text file.");
@@ -132,6 +131,10 @@ public class SBService {
     }
 
 
+    // Aniq Sunesara 11/05/26
+    // Prompt: "in SBService, add a function that takes a string of a sentence and string of a generation method as input.
+    // The function will then parse the sentence, update the counts of the tokens used, and adds the generated sentence and
+    // all its properties into the database via the GeneratedSentence ORM"
     /**
      * Records a generated sentence and includes it in the token corpus.
      *
@@ -354,8 +357,6 @@ public class SBService {
         return tokenIds;
     }
 
-
-
     private static void upsertTransitions(
             Connection connection, List<String> words, Map<String, Long> tokenIds)
             throws SQLException {
@@ -429,6 +430,8 @@ public class SBService {
         }
     }
 
+    // Aniq Sunesara 11/20/26
+    // prompt: "Add a tab onto the GUI that will display all the generated sentences and related data"
     /**
      * Returns saved generated sentences, newest first.
      * Fetching the starting token in the same session avoids lazy-loading

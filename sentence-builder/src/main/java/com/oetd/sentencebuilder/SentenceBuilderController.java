@@ -79,8 +79,9 @@ public class SentenceBuilderController {
     @FXML
     private TextArea autoCompleteTextArea;
 
-    // Aniq Sunesara
+    // Aniq Sunesara 11/20/26
     // Generated Sentences tab, displaying persisted Generated_Sentence rows.
+    // prompt: "Add a tab onto the GUI that will display all the generated sentences and related data"
     @FXML private Tab generatedSentencesTab;
     @FXML private TableView<GeneratedSentence> generatedSentencesTableView;
     @FXML private TableColumn<GeneratedSentence, Long> sentenceIdColumn;
@@ -142,6 +143,7 @@ public class SentenceBuilderController {
         this.stage = stage;
     }
 
+
     @FXML
     public void initialize() {
         fileChooser.setTitle("Add source.");
@@ -153,6 +155,7 @@ public class SentenceBuilderController {
         endCountColumn.setCellValueFactory(new PropertyValueFactory<>("endCount"));
         createdAtColumn.setCellValueFactory(new PropertyValueFactory<>("createdAt"));
 
+        // Aniq Sunesara 11/20/26
         // Display every saved sentence and its associated database metadata.
         sentenceIdColumn.setCellValueFactory(cell ->
                 new ReadOnlyObjectWrapper<>(cell.getValue().getSentenceId()));
@@ -604,6 +607,8 @@ public class SentenceBuilderController {
         infoAlert.showAndWait();
     }
 
+    // Aniq Sunesara 11/20/26
+    // prompt: "Add a tab onto the GUI that will display all the generated sentences and related data"
     @FXML
     private void handleRefreshGeneratedSentences() {
         refreshGeneratedSentences();

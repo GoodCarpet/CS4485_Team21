@@ -11,11 +11,10 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
-// Aniq Sunesara
+
+
+// Aniq Sunesara 10/30/26
 // prompt: make a java ORM mapping file for both the Imported_File and Generated_Sentence tables
-
-import java.time.LocalDateTime;
-
 /** Maps the existing Generated_Sentence table. */
 @Entity
 @Table(name = "Generated_Sentence")

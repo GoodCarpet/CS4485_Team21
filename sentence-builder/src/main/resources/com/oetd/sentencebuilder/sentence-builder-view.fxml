@@ -81,6 +81,7 @@
                         </VBox>
                     </content>
                 </Tab>
+                <!--    // Aniq Sunesara 11/20/26 prompt: "Add a tab onto the GUI that will display all the generated sentences and related data" -->
                 <Tab fx:id="generatedSentencesTab" text="Generated Sentences">
                     <content>
                         <VBox spacing="10.0">

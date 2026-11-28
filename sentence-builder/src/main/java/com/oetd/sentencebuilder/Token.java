@@ -12,7 +12,8 @@ import javafx.beans.property.SimpleStringProperty;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
-
+// Aniq Sunesara 10/23/26
+// Give me the exact updated TokenTransition.java and Token.java code to make the application work with our schema.
 @Entity
 @Table(name = "Token")
 public class Token {

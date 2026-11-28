@@ -4,7 +4,8 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
-// Aniq Sunesara
+
+// Aniq Sunesara 10/30/26
 // prompt: make a java ORM mapping file for both the Imported_File and Generated_Sentence tables
 
 /** Maps the existing Imported_File table. */

@@ -1,4 +1,9 @@
-/* Only the Generated Sentences table receives duplicate-hash highlighting. */
+/*
+Aniq Sunesara 11/20/26
+prompt: "make it so that when a certain entry is selected, duplicate sentences that have the
+same hash are also highlighted"
+Only the Generated Sentences table receives duplicate-hash highlighting.
+*/
 #generatedSentencesTableView .table-row-cell:matching-sentence-hash {
     -fx-background-color: #fff0bd;
 }

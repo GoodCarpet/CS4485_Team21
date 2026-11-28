@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 import java.io.Serializable;
 import java.util.Objects;
 
+// Aniq Sunesara 10/23/26
+// Give me the exact updated TokenTransition.java and Token.java code to make the application work with our schema.
 @Entity
 @Table(name = "Token_Transition")
 public class TokenTransition {
